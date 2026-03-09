@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CPSC 424, Lab 2, Exercise 1</title>
+
+<style>
+body {
+    background-color: #DDDDDD;
+}
+canvas {
+    background-color: white;
+    display: block;
+}
+#canvasholder {
+    border:2px solid black;
+    float:left;
+}
+</style>
+
+<script>
+
+"use strict";
+
+var canvas;
+var graphics;
+
+/* =========================
+   RYSOWANIE PÓŁKSIĘŻYCA
+   ========================= */
+
+function drawCrescentMoon() {
+
+    graphics.clearRect(0,0,600,600);
+
+    /* ===== GŁÓWNY OKRĄG KSIĘŻYCA ===== */
+
+    graphics.fillStyle = "#FFD700";
+    graphics.beginPath();
+    graphics.arc(300,300,150,0,Math.PI*2);
+    graphics.fill();
+
+    /* ===== WYCIĘCIE KSZTAŁTU PÓŁKSIĘŻYCA ===== */
+
+    graphics.fillStyle = "#FFFFFF";
+    graphics.beginPath();
+    graphics.arc(220,260,130,0,Math.PI*2);
+    graphics.fill();
+
+/* ===== RYSOWANIE KSIĘŻYCA Z OBLAMÓWKĄ ===== */
+
+//czarny kształt (oblamówka) - taki sam jak księżyc, tylko większy
+graphics.fillStyle = "#000000";
+
+// Główny okrąg (większy)
+graphics.beginPath();
+graphics.arc(300,300,153,0,Math.PI*2);
+graphics.fill();
+
+// Okrąg wycinający (większy) - tworzy wklęsłość
+graphics.fillStyle = "#FFFFFF"; // Biały, żeby wyciąć kształt
+graphics.beginPath();
+graphics.arc(217,257,133,0,Math.PI*2); // Przesunięty bardziej w lewo i górę
+graphics.fill();
+
+//właściwy żółty księżyc (normalny rozmiar)
+graphics.fillStyle = "#FFD700";
+graphics.beginPath();
+graphics.arc(300,300,150,0,Math.PI*2);
+graphics.fill();
+
+// Wycięcie właściwego kształtu
+graphics.fillStyle = "#FFFFFF";
+graphics.beginPath();
+graphics.arc(220,260,130,0,Math.PI*2);
+graphics.fill();
+
+// Przywracamy czarny kolor dla dalszego rysowania
+graphics.fillStyle = "#000000";
+
+
+    /* ===== NUMER 8 ===== */
+
+    graphics.font = "bold 60px Arial";
+    graphics.fillStyle = "black";
+    graphics.textAlign = "right";
+    graphics.textBaseline = "top";
+
+    graphics.fillText("8",580,20);
+
+    graphics.lineWidth = 2;
+    graphics.strokeText("8",580,20);
+
+    /* ===== OCZY NA ŚRODKU KSIĘŻYCA ===== */
+
+    graphics.lineWidth = 1;
+    graphics.fillStyle = "white";
+    graphics.strokeStyle = "black";
+
+    /* lewe oko (prawe oka) */
+    graphics.beginPath();
+    graphics.arc(360,320,10,0,Math.PI*2);
+    graphics.fill();
+    graphics.stroke();
+
+    /* prawe oko (lewe oka) */
+    graphics.beginPath();
+    graphics.arc(420,330,10,0,Math.PI*2);
+    graphics.fill();
+    graphics.stroke();
+
+    /* ===== ŹRENICE ===== */
+
+    graphics.fillStyle = "black";
+
+    graphics.beginPath();
+    graphics.arc(360,320,5,0,Math.PI*2);
+    graphics.fill();
+
+    graphics.beginPath();
+    graphics.arc(420,330,5,0,Math.PI*2);
+    graphics.fill();
+
+    /* ===== ODBŁYSKI ===== */
+
+    graphics.fillStyle = "white";
+
+    graphics.beginPath();
+    graphics.arc(360,320,1,0,Math.PI*2);
+    graphics.fill();
+
+    graphics.beginPath();
+    graphics.arc(420,330,1,0,Math.PI*2);
+    graphics.fill();
+
+    /* ===== USTA ===== */
+    
+    // Główny kształt ust
+    graphics.beginPath();
+    graphics.fillStyle = "#000000";
+    graphics.strokeStyle = "#000000";
+    
+    // Dolna część ust
+    graphics.moveTo(330, 360);
+    graphics.bezierCurveTo(330, 410, 390, 390, 390, 360);
+    
+    // Górna część ust
+    graphics.bezierCurveTo(380, 375, 340, 375, 330, 360);
+    graphics.fill();
+    graphics.stroke();
+    
+    /* ===== KĄCIKI UST W KSZTAŁCIE V (pogrubione, skrócone i niżej) ===== */
+    
+    // Ustawienie grubej linii
+    graphics.lineWidth = 3;
+    graphics.fillStyle = "#000000";
+    graphics.strokeStyle = "#000000";
+    
+    // Lewy kącik w kształcie V (przesunięty niżej)
+    graphics.beginPath();
+    graphics.moveTo(330, 360);  // lewy kącik ust
+    graphics.lineTo(325, 356);  // górne ramię V (niżej o 1px)
+    graphics.moveTo(330, 360);  // powrót do kącika
+    graphics.lineTo(325, 366);  // dolne ramię V (niżej o 1px)
+    graphics.stroke();
+    
+    // Prawy kącik w kształcie V (przesunięty niżej)
+    graphics.beginPath();
+    graphics.moveTo(390, 360);  // prawy kącik ust
+    graphics.lineTo(395, 356);  // górne ramię V (niżej o 1px)
+    graphics.moveTo(390, 360);  // powrót do kącika
+    graphics.lineTo(395, 366);  // dolne ramię V (niżej o 1px)
+    graphics.stroke();
+
+    /* ===== ZĘBY ===== */
+    
+    // Pierwszy ząb (lewy)
+    graphics.beginPath();
+    graphics.strokeStyle = "#000000";
+    graphics.fillStyle = "#ffffff";
+    graphics.moveTo(345, 370);
+    graphics.lineTo(360, 370);
+    graphics.lineTo(365, 380);
+    graphics.lineTo(345, 380);
+    graphics.lineTo(345, 375);
+    graphics.fill();
+    graphics.stroke();
+    
+    // Drugi ząb (prawy)
+    graphics.beginPath();
+    graphics.moveTo(360, 370);
+    graphics.lineTo(375, 370);
+    graphics.lineTo(375, 381);
+    graphics.lineTo(360, 381);
+    graphics.lineTo(360, 375);
+    graphics.fill();
+    graphics.stroke();
+    graphics.closePath();
+
+}
+
+/* =========================
+   CZYSZCZENIE CANVAS
+   ========================= */
+
+function clearCanvas(){
+    graphics.clearRect(0,0,600,600);
+}
+
+/* =========================
+   INIT
+   ========================= */
+
+function init() {
+    canvas = document.getElementById("canvas");
+    graphics = canvas.getContext("2d");
+}
+
+function pokazObraz(){
+    drawCrescentMoon();
+}
+
+function wyczyscCanvas(){
+    clearCanvas();
+}
+
+</script>
+</head>
+
+<body onload="init()">
+
+<h2>CS 424, Lab 2, Exercise 1</h2>
+
+<div id="canvasholder">
+<canvas id="canvas" width="600" height="600">
+Canvas not supported
+</canvas>
+</div>
+
+<br><br>
+
+<button onclick="pokazObraz()">Pokaż żółty półksiężyc z oczami</button>
+<button onclick="wyczyscCanvas()">Wyczyść</button>
+
+</body>
+</html>
