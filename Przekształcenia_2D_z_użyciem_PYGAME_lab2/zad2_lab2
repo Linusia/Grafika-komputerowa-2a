@@ -1,0 +1,26 @@
+import pygame
+
+pygame.init()
+win = pygame.display.set_mode((600, 600))
+pygame.display.set_caption("Zadanie 2")
+
+# deklarowanie kolorów
+ZIELONY = (0, 255, 0)
+BIALY = (255, 255, 255)
+
+run = True
+while run:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+    
+    win.fill(BIALY)
+    
+    # Rysowanie zielonego kwadratu
+    pygame.draw.rect(win, ZIELONY, (150, 150, 300, 300))
+    
+    pygame.draw.polygon(win, BIALY, [(300, 300), (150, 450), (450, 450)])
+    
+    pygame.display.update()
+
+pygame.quit()
