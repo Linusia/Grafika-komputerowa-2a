@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html><!--
+   Ta strona internetowa wykonuje minimalną konfigurację do używania zdarzeń myszy
+   wraz z grafiką 2D na canvas.
+--><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<meta charset="UTF-8">
+<title>CS424, Lab 2, Exercise 2</title>
+<style>
+    /* Sekcja stylów - wyróżnienie canvas na stronie */
+    body {
+        background-color: #DDDDDD;
+        -webkit-user-select: none; /* wyłączenie zaznaczania tekstu */
+        -moz-user-select: none;    /* dla Firefox */
+        -ms-user-select: none;     /* dla IE 10 */
+        -o-user-select: none;      /* dla Opery */
+        user-select: none;
+    }
+    canvas {
+        background-color: white;
+        display: block;
+    }
+    #canvasholder {
+        border:2px solid black;
+        float: left; /* Dopasowanie ramki do rozmiaru canvas */
+    }
+    .controls {
+        margin-bottom: 10px;
+    }
+    .controls button, .controls select {
+        margin-right: 10px;
+        padding: 5px 10px;
+    }
+</style>
+<script>
+
+    "use strict";  // Włączenie ścisłej kontroli błędów
+
+    var canvas;    // Element canvas do rysowania
+    var graphics;  // Kontekst graficzny 2D
+    
+    /**
+     * Funkcja zwracająca losowy kolor RGB
+     */
+    function randomColorString() {
+        var r = Math.floor(256*Math.random());
+        var g = Math.floor(256*Math.random());
+        var b = Math.floor(256*Math.random());
+        return "rgb(" + r + "," + g + "," + b + ")";
+    }
+    
+    /**
+     * Funkcja dodająca nowy kolor do listy rozwijanej
+     */
+    function addNewColor() {
+        var select = document.getElementById("colorChoice");
+        var newColor = prompt("Wprowadź nazwę nowego koloru (po angielsku, np. purple, orange):", "purple");
+        
+        if (newColor) {
+            // Sprawdzenie czy kolor już istnieje
+            for (var i = 0; i < select.options.length; i++) {
+                if (select.options[i].text.toLowerCase() === newColor.toLowerCase()) {
+                    alert("Taki kolor już istnieje!");
+                    return;
+                }
+            }
+            
+            // Dodanie nowej opcji do selecta
+            var option = document.createElement("option");
+            option.value = select.options.length; // Kolejny numer
+            option.text = newColor.charAt(0).toUpperCase() + newColor.slice(1).toLowerCase();
+            select.appendChild(option);
+        }
+    }
+    
+    /**
+     * Funkcja czyszcząca canvas (wypełnienie białym kolorem)
+     */
+    function clearCanvas() {
+        graphics.fillStyle = "white";
+        graphics.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    /**
+     * Funkcja rysująca wielokąt foremny
+     * @param {number} x - współrzędna X środka
+     * @param {number} y - współrzędna Y środka
+     * @param {number} sides - liczba boków
+     * @param {number} radius - promień
+     * @param {number} rotation - kąt obrotu w radianach
+     */
+    function drawPolygon(x, y, sides, radius, rotation) {
+        if (sides < 3) sides = 3; // Minimalnie trójkąt
+        
+        graphics.beginPath();
+        for (var i = 0; i < sides; i++) {
+            var angle = rotation + (i * 2 * Math.PI / sides);
+            var xPos = x + radius * Math.cos(angle);
+            var yPos = y + radius * Math.sin(angle);
+            
+            if (i === 0) {
+                graphics.moveTo(xPos, yPos);
+            } else {
+                graphics.lineTo(xPos, yPos);
+            }
+        }
+        graphics.closePath();
+        graphics.fill();   // Wypełnienie kształtu
+        graphics.stroke(); // Obrys kształtu
+    }
+        
+    /**
+     * Funkcja obsługująca zdarzenia myszy na canvas
+     */
+    function installMouseHandler() {
+
+        var dragging = false;  // Flaga przeciągania
+        var startX, startY;    // Początkowe współrzędne myszy
+        var prevX, prevY;      // Poprzednie współrzędne myszy
+        
+        var colorChoice;  // Wybrany kolor z menu
+        var toolChoice;   // Wybrane narzędzie z menu
+        
+        function doMouseDown(evt) {
+                // Obsługa naciśnięcia przycisku myszy
+            if (dragging) {
+                return;  // Przerwanie jeśli już przeciągamy
+            }
+            if (evt.button != 0) {
+                return;  // Tylko lewy przycisk myszy
+            }
+            var x,y;  // Pozycja myszy w współrzędnych canvas
+            var r = canvas.getBoundingClientRect();
+            x = Math.round(evt.clientX - r.left);  // Konwersja do współrzędnych canvas
+            y = Math.round(evt.clientY - r.top);
+            dragging = true;
+            if (dragging) {
+                startX = prevX = x;
+                startY = prevY = y;
+                document.addEventListener("mousemove", doMouseMove, false);
+                document.addEventListener("mouseup", doMouseUp, false);
+            }
+            // Pobranie wybranych wartości z menu
+            colorChoice = Number(document.getElementById("colorChoice").value);
+            toolChoice = Number(document.getElementById("toolChoice").value);
+        }
+        
+        function doMouseMove(evt) {
+                // Obsługa ruchu myszy podczas przeciągania
+            if (!dragging) {
+                return;
+            }
+            var x,y;  // Pozycja myszy w współrzędnych canvas
+            var r = canvas.getBoundingClientRect();
+            x = Math.round(evt.clientX - r.left);  
+            y = Math.round(evt.clientY - r.top);
+            
+            /*------------------------------------------------------------*/
+            /* TODO: Dodanie obsługi różnych narzędzi */
+            
+            // Zapobieganie zbyt gęstemu rysowaniu
+            if ( Math.abs(x-prevX) + Math.abs(y-prevY) < 3 ) {
+                return;
+            }
+            
+            // Ustawienie koloru wypełnienia
+            if (colorChoice == 0) {
+                graphics.fillStyle = randomColorString(); // Losowy kolor
+            }
+            else if (colorChoice == 1) {
+                graphics.fillStyle = "red";
+            }
+            else if (colorChoice == 2) {
+                graphics.fillStyle = "green";
+            }
+            else if (colorChoice == 3) {
+                graphics.fillStyle = "blue";
+            }
+            else {
+                // Obsługa kolorów dodanych przez użytkownika
+                var select = document.getElementById("colorChoice");
+                if (colorChoice < select.options.length) {
+                    graphics.fillStyle = select.options[colorChoice].text.toLowerCase();
+                } else {
+                    graphics.fillStyle = randomColorString();
+                }
+            }
+            
+            // Wybór narzędzia do rysowania
+            if (toolChoice == 0) {
+                // Kwadraty (domyślne narzędzie)
+                graphics.fillRect(x-20, y-20, 40, 40);
+                graphics.strokeRect(x-20, y-20, 40, 40);
+            }
+            else if (toolChoice == 1) {
+                // Trójkąty - użycie funkcji fillPoly
+                graphics.fillPoly(x-15, y+10, x, y-20, x+15, y+10);
+                graphics.strokePoly(x-15, y+10, x, y-20, x+15, y+10);
+            }
+            else if (toolChoice == 2) {
+                // Pięciokąty foremne
+                drawPolygon(x, y, 5, 20, 0);
+            }
+            else if (toolChoice == 3) {
+                // Dwunastokąty foremne
+                drawPolygon(x, y, 12, 20, 0);
+            }
+            
+            /*------------------------------------------------------------*/
+            
+            prevX = x;  // Aktualizacja poprzednich współrzędnych
+            prevY = y;
+        }
+        
+        function doMouseUp(evt) {
+                // Obsługa puszczenia przycisku myszy
+            if (!dragging) {
+                return;
+            }
+            dragging = false; // Koniec przeciągania
+            document.removeEventListener("mousemove", doMouseMove, false);
+            document.removeEventListener("mouseup", doMouseUp, false);
+         }
+         
+         canvas.addEventListener("mousedown", doMouseDown, false);
+
+   }
+
+    /**
+     * Rozszerzenie kontekstu graficznego o dodatkowe funkcje
+     */
+    function addGraphicsContextExtras(graphics) {
+        graphics.strokeLine = function(x1,y1,x2,y2) {
+           this.beginPath();
+           this.moveTo(x1,y1);
+           this.lineTo(x2,y2);
+           this.stroke();
+        }
+        graphics.fillCircle = function(x,y,r) {
+           this.beginPath();
+           this.arc(x,y,r,0,2*Math.PI,false);
+           this.fill();
+        }
+        graphics.strokeCircle = function(x,y,radius) {
+           this.beginPath();
+           this.arc(x,y,radius,0,2*Math.PI,false);
+           this.stroke();
+        }
+        graphics.fillPoly = function() { 
+            // Funkcja rysująca wypełniony wielokąt
+            if (arguments.length < 6)
+               return;
+            this.beginPath();
+            this.moveTo(arguments[0],arguments[1]);
+            for (var i = 2; i+1 < arguments.length; i = i + 2) { 
+               this.lineTo(arguments[i],arguments[i+1]);
+            }
+            this.closePath();
+            this.fill();
+        }
+        graphics.strokePoly = function() { 
+            // Funkcja rysująca obrys wielokąta
+            if (arguments.length < 4)
+               return;
+            this.beginPath();
+            this.moveTo(arguments[0],arguments[1]);
+            for (var i = 2; i+1 < arguments.length; i = i + 2) { 
+               this.lineTo(arguments[i],arguments[i+1]);
+            }
+            this.closePath();
+            this.stroke();
+        }
+        graphics.fillOval = function(x,y,horizontalRadius,verticalRadius) {
+           // Rysowanie wypełnionej elipsy
+           this.save();
+           this.translate(x,y);
+           this.scale(horizontalRadius,verticalRadius);
+           this.beginPath();
+           this.arc(0,0,1,0,2*Math.PI,false);
+           this.restore();
+           this.fill();
+        }
+        graphics.strokeOval = function(x,y,horizontalRadius,verticalRadius) {
+           // Rysowanie obrysu elipsy
+           this.save();
+           this.translate(x,y);
+           this.scale(horizontalRadius,verticalRadius);
+           this.beginPath();
+           this.arc(0,0,1,0,2*Math.PI,false);
+           this.restore();
+           this.stroke();
+        }
+        graphics.getRGB = function(x,y) {
+            // Pobranie koloru piksela
+            var color = this.getImageData(x,y,1,1);
+            return color.data;
+        }
+    }   
+    
+    function init() {
+        // Funkcja inicjalizująca - wywoływana po załadowaniu strony
+        try {
+            canvas = document.getElementById("canvas");
+            graphics = canvas.getContext("2d");
+        } catch(e) {
+            document.getElementById("canvasholder").innerHTML =
+               "<p>Canvas graphics is not supported.<br>" +
+               "An error occurred while initializing graphics.</p>";
+               return;
+        }
+        addGraphicsContextExtras(graphics);
+        installMouseHandler();
+        graphics.fillStyle = "white";
+        graphics.fillRect(0,0,canvas.width,canvas.height); // Wyczyszczenie canvas
+    }
+    
+</script>
+<link href="data:text/css,%3Ais(%5Bid*%3D'google_ads_iframe'%5D%2C%5Bid*%3D'taboola-'%5D%2C.taboolaHeight%2C.taboola-placeholder%2C%23credential_picker_container%2C%23credentials-picker-container%2C%23credential_picker_iframe%2C%5Bid*%3D'google-one-tap-iframe'%5D%2C%23google-one-tap-popup-container%2C.google-one-tap-modal-div%2C%23amp_floatingAdDiv%2C%23ez-content-blocker-container)%20%7Bdisplay%3Anone!important%3Bmin-height%3A0!important%3Bheight%3A0!important%3B%7D" rel="stylesheet" type="text/css"></head>
+<body onload="init()"> <!-- Inicjalizacja po załadowaniu strony -->
+
+<h2>Lab 2, Exercise 2: Mousing</h2>
+
+<noscript>
+    <!-- Komunikat gdy JavaScript jest wyłączony -->
+<p>JavaScript is required to use this page.</p>
+</noscript>
+
+<div class="controls">
+    <p>
+        <b>Kolor:</b>
+        <select id="colorChoice">
+            <option value="0" selected="selected">Random</option>
+            <option value="1">Red</option>
+            <option value="2">Green</option>
+            <option value="3">Blue</option>
+        </select>
+        
+        <b>Narzędzie:</b>
+        <select id="toolChoice">
+            <option value="0" selected="selected">Kwadraty</option>
+            <option value="1">Trójkąty</option>
+            <option value="2">Pięciokąty</option>
+            <option value="3">dwunatokąt</option>
+        </select>
+        
+        <button onclick="addNewColor()">Dodaj nowy kolor</button>
+        <button onclick="clearCanvas()">Clear</button>
+    </p>
+</div>
+
+<div id="canvasholder">
+<canvas id="canvas" width="800" height="600">
+    <!-- Komunikat gdy przeglądarka nie obsługuje canvas -->
+Canvas not supported.
+</canvas>
+</div>
+
+</body>
+</html>
