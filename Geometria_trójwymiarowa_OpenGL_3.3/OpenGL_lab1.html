@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Zadanie: Korkociąg i Piramida (OpenGL 1.1, N=8)</title>
+    <script src="glsim.js"></script>
+    <style>
+        body {
+            background: #111;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h3 {
+            color: #ffaa66;
+            margin-bottom: 5px;
+        }
+        p {
+            font-size: 0.95rem;
+            margin: 8px 0;
+        }
+        .info {
+            background: #1e2a2e;
+            display: inline-block;
+            padding: 8px 18px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        .info span {
+            font-weight: bold;
+            color: #ffaa66;
+        }
+        canvas {
+            border: 2px solid #3a6ea5;
+            border-radius: 8px;
+            box-shadow: 0 0 18px rgba(0,0,0,0.6);
+            background: #000;
+        }
+        #canvas-holder {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .controls {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            background: #1a1f2a;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 8px 20px;
+            border-radius: 30px;
+            backdrop-filter: blur(2px);
+        }
+        kbd {
+            background: #2c3e44;
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-weight: bold;
+            font-family: monospace;
+            margin: 0 2px;
+            box-shadow: inset 0 1px 0 0 #5f7f8f;
+            color: #f9f9e0;
+        }
+        a {
+            color: #b0d4ff;
+        }
+        .object-badge {
+            background: #2a3f4b;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 40px;
+            margin: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body onload="init()">
+
+    <h3>OpenGL 1.1 · Obiekty 3D z klawiszami 1 / 2</h3>
+    <div class="info">
+        Aktualny obiekt: <span id="objLabel">Korkociąg (N=8)</span> &nbsp;|&nbsp;
+        N = <strong style="color:#ffaa66;">8</strong> (zgodnie z treścią)
+    </div>
+
+    <p>🔹 <kbd>1</kbd> → Korkociąg &nbsp;&nbsp;|&nbsp;&nbsp; <kbd>2</kbd> → Piramida (wielokąt o N=8 bokach)</p>
+    <p>🔹 <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> obrót w osiach X/Y &nbsp;|&nbsp; <kbd>PgUp</kbd>/<kbd>PgDn</kbd> obrót Z &nbsp;|&nbsp; <kbd>Home</kbd> reset</p>
+
+    <div id="canvas-holder">
+        <canvas id="glcanvas" width="600" height="600" style="width:600px; height:600px;"></canvas>
+    </div>
+    <div class="controls">
+        Korkociąg: zielono-niebiesko-brązowa spirala (promień rośnie) &nbsp;&nbsp;|&nbsp;&nbsp;
+        Piramida: hierarchicznie z trójkątów, podstawa 8‑kąt
+    </div>
+
+    <script>
+        
+        // ---------- STAŁE WG ZALECEŃ ----------
+        const N = 8;          // <--- JEDYNA ZMIANA: PODSTAWOWA WARTOŚĆ DLA WIELOKĄTA I OBROTÓW
+        
+        // Zmienne rotacji (jak w oryginalnym kodzie)
+        let rotateX = 20;
+        let rotateY = -25;
+        let rotateZ = 0;
+        var objectNumber = 1;   // 1 - korkociąg, 2 - piramida
+        
+        // ---------- FUNKCJE RYSUJĄCE (NIEZMIENIONE, POZA PRZEKAZANIEM N) ----------
+        // square() – z oryginału, pozostaje bez zmian
+        function square(r, g, b) {
+            glColor3f(r, g, b);
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex3f(-0.5, -0.5, 0.5);
+            glVertex3f(0.5, -0.5, 0.5);
+            glVertex3f(0.5, 0.5, 0.5);
+            glVertex3f(-0.5, 0.5, 0.5);
+            glEnd();
+        }
+        
+        // cube() – pozostawiam oryginalną (nieużywana, ale nie usuwamy)
+        function cube(size) {
+            glPushMatrix();
+            glScalef(size,size,size);
+            square(1,0,0);
+            glPushMatrix();
+            glRotatef(90,0,1,0);
+            square(0,1,0);
+            glPopMatrix();
+            glPushMatrix();
+            glRotatef(-90,1,0,0);
+            square(0,0,1);
+            glPopMatrix();
+            glPushMatrix();
+            glRotatef(180,0,1,0);
+            square(0,1,1);
+            glPopMatrix();
+            glPushMatrix();
+            glRotatef(-90,0,1,0);
+            square(1,0,1);
+            glPopMatrix();
+            glPushMatrix();
+            glRotatef(90,1,0,0);
+            square(1,1,0);
+            glPopMatrix();
+            glPopMatrix();
+        }
+        
+        // Wielokąt foremny (podstawa piramidy) – N wierzchołków
+        function Poly(r, g, b, n, rad) {
+            glColor3f(r, g, b);
+            glBegin(GL_TRIANGLE_FAN);
+            let degree = 0;
+            let step = (Math.PI * 2) / n;
+
+            glVertex3f(0, 0, 0);   // środek podstawy
+            for (let i = 0; i <= n; i++) {
+                let angle = i * step;
+                let x = rad * Math.cos(angle);
+                let y = rad * Math.sin(angle);
+                glVertex3f(x, y, 0);
+            }
+            glEnd();
+        }
+        
+        // Rysowanie pojedynczego trójkąta (hierarchia)
+        function Triangle(r, g, b, Points) {
+            glColor3f(r, g, b);
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex3f(Points[0][0], Points[0][1], Points[0][2]);
+            glVertex3f(Points[1][0], Points[1][1], Points[1][2]);
+            glVertex3f(Points[2][0], Points[2][1], Points[2][2]);
+            glEnd();
+        }
+        
+        // Rysowanie ścian bocznych piramidy (N trójkątów) – każdy trójkąt ma wierzchołki: krawędź podstawy i wierzchołek
+        // oryginalna funkcja Triangle1Side: parametry (r,g,b,n,r,h) – rysuje n trójkątów o podstawie na promieniu r i wysokości h
+        function Triangle1Side(r, g, b, n, rad, h) {
+            let degree = 0;
+            let step = (Math.PI * 2) / n;
+            for (let i = 0; i < n; i++) {
+                let x1 = rad * Math.cos(degree);
+                let y1 = rad * Math.sin(degree);
+                let x2 = rad * Math.cos(degree + step);
+                let y2 = rad * Math.sin(degree + step);
+                // wierzchołek piramidy (0,0,h)
+                const Points = [
+                    [x1, y1, 0],
+                    [x2, y2, 0],
+                    [0, 0, h]
+                ];
+                // Kolor zmienia się płynnie dla każdego trójkąta – gradient odcieni (r,g,b modulowane)
+                let rCol = r + (i / n) * 0.6;
+                let gCol = g + (i / (n * 1.5)) * 0.5;
+                let bCol = b + (i / (n * 2)) * 0.4;
+                Triangle(rCol, gCol, bCol, Points);
+                degree += step;
+            }
+        }
+        
+        // Piramida (hierarchicznie) – skala, liczba boków N, promień podstawy, wysokość
+        function Pyramida(scale, n, rad, h) {
+            glPushMatrix();
+            glScalef(scale, scale, scale);
+            // podstawa – wielokąt o N wierzchołkach (kolor ciepły)
+            Poly(0.9, 0.5, 0.2, n, rad);   // brązowo-pomarańczowa podstawa
+            glPushMatrix();
+            // ściany boczne (każdy trójkąt osobno)
+            Triangle1Side(0.2, 0.6, 0.3, n, rad, h);
+            glPopMatrix();
+            glPopMatrix();
+        }
+        
+        function Korkociag(scale, n_obroty, r_max, wysokosc) {
+            glPushMatrix();
+            glScalef(scale, scale, scale);
+            // kolor dynamiczny: przejście z zielonego przez niebieski do brązowego (rgb)
+            glBegin(GL_LINE_STRIP);
+            let steps = 360 * n_obroty;    // liczba segmentów
+            let stepR = r_max / steps;     // przyrost promienia na każdy stopień
+            let stepH = wysokosc / steps;
+            let radius = 0;
+            for (let deg = 0; deg <= steps; deg++) {
+                let angle = deg * Math.PI / 180;
+                let x = Math.cos(angle) * radius;
+                let y = Math.sin(angle) * radius;
+                let z = stepH * deg;
+                // kolor zmienia się w zależności od postępu: start zielony (0,1,0) -> niebieski (0,0.5,1) -> brązowy (0.6,0.3,0.1)
+                let t = deg / steps;   // 0..1
+                let rCol = 0.2 * t + 0.6 * t;        // brązowy akcent
+                let gCol = 1.0 - t * 0.7;             // zielony maleje
+                let bCol = 0.3 + t * 0.7;              // wzrost niebieskiego
+                // nasycenie: dla przejrzystości ładny efekt
+                glColor3f(rCol * 0.9 + 0.1, Math.max(0.2, gCol), bCol * 0.8 + 0.2);
+                glVertex3f(x, y, z);
+                radius += stepR;
+            }
+            glEnd();
+            glPopMatrix();
+        }
+        
+        // ---------- FUNKCJE OpenGL (initGL, display) ----------
+        function initGL() {
+            glMatrixMode(GL_PROJECTION);
+            // nieco większa scena, aby zmieścić korkociąg i piramidę (skala -2..2)
+            glOrtho(-2, 2, -2, 2, -3, 3);
+            glMatrixMode(GL_MODELVIEW);
+            glEnable(GL_DEPTH_TEST);
+            glClearColor(0.05, 0.05, 0.1, 1);
+        }
+        
+        function display() {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glLoadIdentity();
+            
+            // zastosowanie rotacji (jak w oryginalnym kodzie)
+            glRotatef(rotateZ, 0, 0, 1);
+            glRotatef(rotateY, 0, 1, 0);
+            glRotatef(rotateX, 1, 0, 0);
+            
+            
+            switch (objectNumber) {
+                case 1:
+                    Korkociag(0.9, N, 0.7, 1.0);
+                    break;
+                case 2:
+                    Pyramida(0.9, N, 0.55, 1.2);
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        // Obsługa klawiszy (strzałki, page up/down, home, cyfry 1 i 2)
+        function doKeyDown(evt) {
+            let key = evt.keyCode;
+            // rotacje
+            if (key == 37)      // left
+                rotateY -= 15;
+            else if (key == 39) // right
+                rotateY += 15;
+            else if (key == 40) // down
+                rotateX += 15;
+            else if (key == 38) // up
+                rotateX -= 15;
+            else if (key == 33) // page up
+                rotateZ += 15;
+            else if (key == 34) // page down
+                rotateZ -= 15;
+            else if (key == 36) // home
+                rotateX = rotateY = rotateZ = 0;
+            
+            // wybór obiektu: klawisze '1' i '2' (keyCode 49, 50)
+            if (key == 49) {
+                objectNumber = 1;
+                document.getElementById("objLabel").innerHTML = "Korkociąg (N=8)";
+            }
+            else if (key == 50) {
+                objectNumber = 2;
+                document.getElementById("objLabel").innerHTML = "Piramida 8‑kątna";
+            }
+            
+            // zapobieganie przewijaniu dla klawiszy strzałek/stron
+            if ((key >= 33 && key <= 40) || key == 37 || key == 38 || key == 39 || key == 40 || key == 49 || key == 50) {
+                evt.preventDefault();
+            }
+            // odświeżenie widoku
+            display();
+        }
+        
+        // Inicjalizacja GLSim oraz rejestracja eventów
+        function init() {
+            try {
+                // użycie canvas o id "glcanvas"
+                glsimUse("glcanvas");
+            } catch (e) {
+                document.getElementById("canvas-holder").innerHTML =
+                    "<div style='color:#ff8888; padding:20px;'>Błąd WebGL/GLSim: " + e + "</div>";
+                return;
+            }
+            // globalna obsługa klawiatury
+            document.onkeydown = doKeyDown;
+            initGL();
+            display();
+            
+            // Dodatkowo: aktualizacja etykiety startowej
+            document.getElementById("objLabel").innerHTML = (objectNumber === 1 ? "Korkociąg (N=8)" : "Piramida 8‑kątna");
+        }
+        
+    </script>
+</body>
+
+</html>
