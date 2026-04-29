@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Material Properites Demo + Pyramid</title>
+<link rel="stylesheet" href="../demo.css">
+<script src="../script/demo-core.js"></script>
+<script src="../script/glsim.js"></script>
+<script src="../script/basic-object-models-IFS.js"></script>
+<script src="../script/teapot-model-IFS.js"></script>
+<script src="../script/slider-canvas.js"></script>
+<script>
+
+var camera;
+
+var slidersDiffuse, slidersSpecular, sliderShininess;
+
+var currentModel = null;
+var pyramidModel = null;
+
+var cubeModel = null,
+    coneModel = null,
+    cylinderModel = null,
+    sphereModel = null,
+    torusModel = null;
+
+// ========== PIRAMIDA Z POPRAWNYMI NORMALNYMI ==========
+function createPyramidModel() {
+    // Wierzchołki piramidy
+    // Podstawa: y = -0.5, wierzchołek: y = 0.5
+    // Rozmiar podstawy: 1.0 x 1.0
+    var vertices = [
+        // Podstawa (y = -0.5)
+        -0.5, -0.5, -0.5,   // 0 - przedni lewy
+         0.5, -0.5, -0.5,   // 1 - przedni prawy
+         0.5, -0.5,  0.5,   // 2 - tylny prawy
+        -0.5, -0.5,  0.5,   // 3 - tylny lewy
+        // Wierzchołek (y = 0.5)
+         0.0,  0.5,  0.0    // 4 - wierzchołek
+    ];
+    
+    // Indeksy dla 4 ścian bocznych + 2 trójkąty na podstawę = 6 ścian
+    var indices = [
+        // Ściany boczne (trójkąty) - kolejność CCW patrząc z zewnątrz
+        0, 1, 4,   // przednia
+        1, 2, 4,   // prawa
+        2, 3, 4,   // tylna
+        3, 0, 4,   // lewa
+        // Podstawa (2 trójkąty) - normalna w dół, kolejność CW
+        0, 3, 1,
+        1, 3, 2
+    ];
+    
+    // Funkcja do obliczania normalnej ściany
+    function getFaceNormal(v0, v1, v2) {
+        var x0 = vertices[v0*3], y0 = vertices[v0*3+1], z0 = vertices[v0*3+2];
+        var x1 = vertices[v1*3], y1 = vertices[v1*3+1], z1 = vertices[v1*3+2];
+        var x2 = vertices[v2*3], y2 = vertices[v2*3+1], z2 = vertices[v2*3+2];
+        
+        var ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
+        var vx = x2 - x0, vy = y2 - y0, vz = z2 - z0;
+        
+        var nx = uy * vz - uz * vy;
+        var ny = uz * vx - ux * vz;
+        var nz = ux * vy - uy * vx;
+        
+        var len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+        if (len > 0.0001) {
+            nx /= len; ny /= len; nz /= len;
+        }
+        return [nx, ny, nz];
+    }
+    
+    // Lista ścian (trójkątów)
+    var faces = [
+        [0,1,4], [1,2,4], [2,3,4], [3,0,4],  // ściany boczne
+        [0,3,1], [1,3,2]                       // podstawa
+    ];
+    
+    // Tworzymy tablice (flat shading - każdy trójkąt ma własne normalne)
+    var vertexPositions = [];
+    var vertexNormals = [];
+    var texCoords = [];
+    var indexArray = [];
+    
+    var counter = 0;
+    for (var f = 0; f < faces.length; f++) {
+        var fn = getFaceNormal(faces[f][0], faces[f][1], faces[f][2]);
+        for (var v = 0; v < 3; v++) {
+            var vidx = faces[f][v];
+            vertexPositions.push(vertices[vidx*3], vertices[vidx*3+1], vertices[vidx*3+2]);
+            vertexNormals.push(fn[0], fn[1], fn[2]);
+            texCoords.push(0, 0);
+            indexArray.push(counter++);
+        }
+    }
+    
+    return {
+        vertexPositions: new Float32Array(vertexPositions),
+        vertexNormals: new Float32Array(vertexNormals),
+        vertexTextureCoords: new Float32Array(texCoords),
+        indices: new Uint16Array(indexArray)
+    };
+}
+
+// ========== KONIEC DEFINICJI PIRAMIDY ==========
+
+function drawModelIFS(model) {
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(3, GL_FLOAT, 0, model.vertexPositions);
+    glEnableClientState(GL_NORMAL_ARRAY);
+    glNormalPointer(GL_FLOAT, 0, model.vertexNormals);
+    glDrawElements(GL_TRIANGLES, model.indices.length, GL_UNSIGNED_SHORT, model.indices);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_NORMAL_ARRAY);
+}
+
+function newMaterial() {
+    var index = Number(document.getElementById("materialSelect").value);
+    if (index == -1) return;
+    var m = materialProperties[index];
+    slidersDiffuse.setValue(0, m[4]);
+    slidersDiffuse.setValue(1, m[5]);
+    slidersDiffuse.setValue(2, m[6]);
+    slidersSpecular.setValue(0, m[8]);
+    slidersSpecular.setValue(1, m[9]);
+    slidersSpecular.setValue(2, m[10]);
+    sliderShininess.setValue(0, Math.round(m[12]));
+    draw();
+}
+
+function newModel() {
+    var name = document.getElementById("modelSelect").value;
+    var model = null;
+    switch (name) {
+        case "Teapot":
+            currentModel = teapotModel;
+            break;
+        case "Cube":
+            cubeModel = cubeModel || cube();
+            currentModel = cubeModel;
+            break;
+        case "Cone":
+            coneModel = coneModel || uvCone(0.5, 1.2, 64);
+            currentModel = coneModel;
+            break;
+        case "Cylinder":
+            cylinderModel = cylinderModel || uvCylinder(0.5, 1, 64);
+            currentModel = cylinderModel;
+            break;
+        case "Torus":
+            torusModel = torusModel || uvTorus(0.5, 0.5/3, 64, 32);
+            currentModel = torusModel;
+            break;
+        case "Sphere":
+            sphereModel = sphereModel || uvSphere(0.5, 128, 64);
+            currentModel = sphereModel;
+            break;
+        case "Pyramid":
+            pyramidModel = pyramidModel || createPyramidModel();
+            currentModel = pyramidModel;
+            break;
+    }
+    draw();
+}
+
+function sliderChange() {
+    document.getElementById("materialSelect").value = "-1";
+    draw();
+}
+
+function draw() {
+    if (!currentModel) return;
+    
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    camera.apply();
+    
+    if (currentModel == teapotModel) {
+        glScalef(0.05, 0.05, 0.05);
+    } else if (currentModel == pyramidModel) {
+        // Piramida - obracamy, żeby stała na podstawie
+        glRotatef(-90, 1, 0, 0);
+        glScalef(0.8, 0.8, 0.8);
+    } else {
+        glRotatef(-90, 1, 0, 0);
+    }
+    
+    // Ustawiamy materiał - to działa dla wszystkich modeli!
+    var r = slidersDiffuse.value(0);
+    var g = slidersDiffuse.value(1);
+    var b = slidersDiffuse.value(2);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, [r, g, b, 1]);
+    
+    var sr = slidersSpecular.value(0);
+    var sg = slidersSpecular.value(1);
+    var sb = slidersSpecular.value(2);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [sr, sg, sb, 1]);
+    
+    var s = sliderShininess.value(0);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, s);
+    
+    drawModelIFS(currentModel);
+}
+
+function initGL() {
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, [0.4, 0.4, 0.4, 1]);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, [1, 1, 1, 1]);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, [0.2, 0.2, 0.2, 1]);
+    glEnable(GL_NORMALIZE);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.3, 0.3, 0.3, 1);
+    
+    // Włączamy dwustronne oświetlenie, żeby było widać wnętrze (na wypadek odwróconych ścian)
+    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, 1);
+}
+
+function init() {
+    try {
+        glsimUse("maincanvas");
+    } catch (e) {
+        document.getElementById("canvas-holder").innerHTML = "<p><b>Sorry, an error occurred:<br>" + e + "</b></p>";
+        return;
+    }
+    
+    // Dodanie opcji Pyramid do selecta
+    var select = document.getElementById("modelSelect");
+    var option = document.createElement("option");
+    option.text = "Pyramid";
+    option.value = "Pyramid";
+    select.appendChild(option);
+    
+    // Inicjalizacja suwaków dla koloru diffuse (taki jak Brass)
+    slidersDiffuse = new SliderCanvas(document.getElementById("diffuse-sliders"));
+    slidersDiffuse.addSlider({label:"Red", max:1, step:0.001, value:0.78, decimals:3});
+    slidersDiffuse.addSlider({label:"Green", max:1, step:0.001, value:0.57, decimals:3});
+    slidersDiffuse.addSlider({label:"Blue", max:1, step:0.001, value:0.11, decimals:3});
+    slidersDiffuse.draw();
+    
+    slidersSpecular = new SliderCanvas(document.getElementById("specular-sliders"));
+    slidersSpecular.addSlider({label:"Red", max:1, step:0.001, value:0.99, decimals:3});
+    slidersSpecular.addSlider({label:"Green", max:1, step:0.001, value:0.94, decimals:3});
+    slidersSpecular.addSlider({label:"Blue", max:1, step:0.001, value:0.81, decimals:3});
+    slidersSpecular.draw();
+    
+    sliderShininess = new SliderCanvas(document.getElementById("shininess-slider"));
+    sliderShininess.addSlider({min:0, max:128, value:28});
+    sliderShininess.draw();
+    
+    // Callbacki
+    slidersDiffuse.onChange = sliderChange;
+    slidersSpecular.onChange = sliderChange;
+    sliderShininess.onChange = sliderChange;
+    document.getElementById("modelSelect").onchange = newModel;
+    document.getElementById("materialSelect").onchange = newMaterial;
+    document.getElementById("reset").onclick = function() { camera.lookAt(2, 2, 5); draw(); };
+    
+    // Inicjalizacja OpenGL i kamery
+    initGL();
+    camera = new Camera();
+    camera.setScale(0.8);
+    camera.lookAt(2, 2, 5);
+    
+    // Domyślnie ustawiamy piramidę
+    pyramidModel = createPyramidModel();
+    currentModel = pyramidModel;
+    document.getElementById("modelSelect").value = "Pyramid";
+    document.getElementById("materialSelect").value = "2"; // Brass
+    
+    // Ustaw wartości Brass
+    var brass = materialProperties[2];
+    slidersDiffuse.setValue(0, brass[4]);
+    slidersDiffuse.setValue(1, brass[5]);
+    slidersDiffuse.setValue(2, brass[6]);
+    slidersSpecular.setValue(0, brass[8]);
+    slidersSpecular.setValue(1, brass[9]);
+    slidersSpecular.setValue(2, brass[10]);
+    sliderShininess.setValue(0, Math.round(brass[12]));
+    
+    draw();
+    camera.installTrackball(draw);
+}
+
+// Tablica materiałów (presety)
+var materialProperties = [
+    [0.6, 0.6, 0.6, 1.0, 0.6, 0.6, 0.6, 1.0, 1, 1, 1, 1, 16],  // Basic Gray
+    [0.135, 0.2225, 0.1575, 1.0, 0.54, 0.89, 0.63, 1.0, 0.316228, 0.316228, 0.316228, 1.0, 12.8],  // Jade
+    [0.329412, 0.223529, 0.027451, 1.0, 0.780392, 0.568627, 0.113725, 1.0, 0.992157, 0.941176, 0.807843, 1.0, 27.9],  // Brass
+    [0.2125, 0.1275, 0.054, 1.0, 0.714, 0.4284, 0.18144, 1.0, 0.393548, 0.271906, 0.166721, 1.0, 25.6],  // Bronze
+    [0.19125, 0.0735, 0.0225, 1.0, 0.7038, 0.27048, 0.0828, 1.0, 0.256777, 0.137622, 0.086014, 1.0, 12.8],  // Copper
+    [0.24725, 0.1995, 0.0745, 1.0, 0.75164, 0.60648, 0.22648, 1.0, 0.628281, 0.555802, 0.366065, 1.0, 51.2],  // Gold
+    [0.0, 0.0, 0.0, 1.0, 0.1, 0.35, 0.1, 1.0, 0.45, 0.55, 0.45, 1.0, 32.0],  // Green Plastic
+    [0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0, 0.7, 0.6, 0.6, 1.0, 32.0],  // Red Plastic
+    [0, 0, 0, 1.0, 0.01, 0.01, 0.01, 1.0, 1, 1, 1, 1.0, 32.0],  // Black Plastic
+    [0.02, 0.02, 0.02, 1.0, 0.01, 0.01, 0.01, 1.0, 0.4, 0.4, 0.4, 1.0, 10.0],  // Black Rubber
+    [0.0, 0.05, 0.05, 1.0, 0.4, 0.5, 0.5, 1.0, 0.04, 0.7, 0.7, 1.0, 10.0]  // Cyan Rubber
+];
+
+</script>
+</head>
+<body onload="init()">
+
+<div id="content">
+
+<h3 id="headline">Material Properties Demo + Pyramid</h3>
+
+<table cellpadding="5" border="0" cellspacing="0">
+<tr>
+    <td><div id="canvas-holder">
+        <canvas id="maincanvas" width="300" height="300"></canvas>
+        </div>
+       </td>
+    <td>
+    <p>Model:<br>
+    <select id="modelSelect">
+        <option>Teapot</option>
+        <option>Cube</option>
+        <option>Cone</option>
+        <option>Cylinder</option>
+        <option>Torus</option>
+        <option>Sphere</option>
+    </select>
+    </p>
+    <p>Material Presets:<br>
+    <select id="materialSelect">
+        <option value="-1">Custom Settings</option>
+        <option value="0">Basic Gray</option>
+        <option value="1">Jade</option>
+        <option value="2">Brass</option>
+        <option value="3">Bronze</option>
+        <option value="4">Copper</option>
+        <option value="5">Gold</option>
+        <option value="6">Green Plastic</option>
+        <option value="7">Red Plastic</option>
+        <option value="8">Black Plastic</option>
+        <option value="9">Black Rubber</option>
+        <option value="10">Cyan Rubber</option>
+    </select>
+    </p>
+    <p><button id="reset">Reset Rotation</button></p>
+    
+    <p style="margin-top:50px"><b>Shininess:</b><br>
+    <canvas id="shininess-slider" style="display:inline" width=250 height="45"></canvas>
+    </p>
+    </div>
+    </td>
+</tr>
+
+<tr>
+    <td>
+    <p><b>Diffuse Color:</b><br>
+    <canvas id="diffuse-sliders" style="display:inline" width=250 height="150"></canvas>
+    </p>
+    </td>
+    <td>
+    <p><b>Specular Color:</b><br>
+    <canvas id="specular-sliders" style="display:inline" width=250 height="150"></canvas>
+    </p>
+    </td>
+</tr>
+
+</table>
+
+</div>
+
+<div id="help-content" style="display:none">
+<h3>About this demo...</h3>
+<p>This demo lets you control material properties (diffuse color, specular color, shininess).
+A Pyramid model has been added - you can change its color using the sliders or presets.</p>
+</div>
+
+<div id="help-icon">
+<img src="../image/question32.png" onclick="showDemoHelp()" title="Click here for information about this demo." width="32" height="32">
+</div>
+<div id="hide-help-icon">
+<img src="../image/close32.png" onclick="showDemoHelp()" title="Click here to return to the demo." width="65" height="32">
+</div>
+<div id="helpBG" style="display:none"></div>
+</body>
+</html>

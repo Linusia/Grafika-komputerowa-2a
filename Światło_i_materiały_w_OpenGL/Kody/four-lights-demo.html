@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html>
+<!--
+ *  Zadanie: Piramida z użyciem różnych materiałów na każdej ścianie.
+ *  - Piramida - każda ściana ma inny materiał.
+ *  - Podstawa - prostopadłościan, obracana myszą (przeciąganie w poziomie).
+ *  - Źródło światła w kształcie kuli animowane wokół piramidy.
+ *  - Globalne światło otoczenia (ambient).
+-->
+<head>
+<meta charset="UTF-8">
+<title>Piramida z materiałami - Grafika Komputerowa</title>
+<link rel="stylesheet" href="../demo.css">
+<script src="../script/demo-core.js"></script>
+<script src="../script/glsim.js"></script>
+<script src="../script/teapot-model-IFS.js"></script>
+<script>
+
+var camera;
+var baseRotationY = 0;        // Rotacja podstawy wokół osi Y
+var isDragging = false;
+var lastMouseX = 0;
+
+var animate;                  // checkbox do animacji światła
+var ambientLight;             // checkbox dla światła otoczenia
+var pointLight;               // checkbox dla światła punktowego (kuli)
+
+var animating = false;        // czy animacja jest aktywna
+var frameNumber = 0;          // numer klatki do animacji
+
+// Pozycja światła punktowego (kuli) - będzie się obracać wokół piramidy
+var lightAngle = 0;
+var lightDistance = 8;
+var lightHeight = 5;
+
+// Definicje materiałów dla każdej ściany piramidy
+// Każda ściana ma inny kolor i połysk
+var pyramidMaterials = [
+    { // Ściana przednia (Front) - Czerwona z połyskiem
+        ambient:  [0.5, 0.0, 0.0, 1.0],
+        diffuse:  [0.8, 0.1, 0.1, 1.0],
+        specular: [0.9, 0.4, 0.4, 1.0],
+        shininess: 64
+    },
+    { // Ściana prawa (Right) - Zielona
+        ambient:  [0.0, 0.5, 0.0, 1.0],
+        diffuse:  [0.1, 0.8, 0.1, 1.0],
+        specular: [0.4, 0.9, 0.4, 1.0],
+        shininess: 48
+    },
+    { // Ściana tylna (Back) - Niebieska
+        ambient:  [0.0, 0.0, 0.5, 1.0],
+        diffuse:  [0.1, 0.1, 0.8, 1.0],
+        specular: [0.4, 0.4, 0.9, 1.0],
+        shininess: 80
+    },
+    { // Ściana lewa (Left) - Żółta
+        ambient:  [0.5, 0.5, 0.0, 1.0],
+        diffuse:  [0.8, 0.8, 0.1, 1.0],
+        specular: [0.9, 0.9, 0.4, 1.0],
+        shininess: 32
+    }
+];
+
+// Materiał dla podstawy (szary metal)
+var baseMaterial = {
+    ambient:  [0.2, 0.2, 0.2, 1.0],
+    diffuse:  [0.6, 0.6, 0.6, 1.0],
+    specular: [0.8, 0.8, 0.8, 1.0],
+    shininess: 32
+};
+
+// Materiał dla kuli światła (emisyjny - świeci się)
+var lightSphereMaterial = {
+    ambient:  [0.0, 0.0, 0.0, 1.0],
+    diffuse:  [0.0, 0.0, 0.0, 1.0],
+    specular: [0.0, 0.0, 0.0, 1.0],
+    emission: [0.8, 0.8, 0.5, 1.0],
+    shininess: 128
+};
+
+// Materiał dla światła gdy wyłączone (szary)
+var lightSphereMaterialOff = {
+    ambient:  [0.3, 0.3, 0.3, 1.0],
+    diffuse:  [0.5, 0.5, 0.5, 1.0],
+    specular: [0.2, 0.2, 0.2, 1.0],
+    emission: [0.0, 0.0, 0.0, 1.0],
+    shininess: 64
+};
+
+// Rysuje kulę (dla źródła światła)
+function drawSphere(radius, slices, stacks) {
+    var i, j;
+    for (j = 0; j < stacks; j++) {
+        var latitude1 = (Math.PI/stacks) * j - Math.PI/2;
+        var latitude2 = (Math.PI/stacks) * (j+1) - Math.PI/2;
+        var sinLat1 = Math.sin(latitude1);
+        var cosLat1 = Math.cos(latitude1);
+        var sinLat2 = Math.sin(latitude2);
+        var cosLat2 = Math.cos(latitude2);
+        glBegin(GL_TRIANGLE_STRIP);
+        for (i = 0; i <= slices; i++) {
+            var longitude = (2*Math.PI/slices) * i;
+            var sinLong = Math.sin(longitude);
+            var cosLong = Math.cos(longitude);
+            var x1 = cosLong * cosLat1;
+            var y1 = sinLong * cosLat1;
+            var z1 = sinLat1;
+            var x2 = cosLong * cosLat2;
+            var y2 = sinLong * cosLat2;
+            var z2 = sinLat2;
+            glNormal3d(x2, y2, z2);
+            glVertex3d(radius*x2, radius*y2, radius*z2);
+            glNormal3d(x1, y1, z1);
+            glVertex3d(radius*x1, radius*y1, radius*z1);
+        }
+        glEnd();
+    }
+}
+
+// Rysuje piramidę o podstawie kwadratowej (rozmiar 4x4, wysokość 5)
+// Środek podstawy w y = -2.5, wierzchołek w y = 2.5
+// Każda ściana ma inny materiał - używamy GL_TRIANGLES
+function drawPyramid() {
+    // Wierzchołki piramidy
+    // Podstawa: kwadrat o boku 4, środek na y = -2.5
+    // Wierzchołek: y = 2.5
+    var v0 = [-2.0, -2.5, -2.0];  // przedni lewy
+    var v1 = [ 2.0, -2.5, -2.0];  // przedni prawy
+    var v2 = [ 2.0, -2.5,  2.0];  // tylny prawy
+    var v3 = [-2.0, -2.5,  2.0];  // tylny lewy
+    var top = [ 0.0,  2.5,  0.0]; // wierzchołek
+    
+    // Ściana przednia (v0, v1, top)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, pyramidMaterials[0].ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, pyramidMaterials[0].diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, pyramidMaterials[0].specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, pyramidMaterials[0].shininess);
+    // Oblicz normalną dla ściany przedniej
+    var u1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
+    var u2 = [top[0]-v0[0], top[1]-v0[1], top[2]-v0[2]];
+    var nx = u1[1]*u2[2] - u1[2]*u2[1];
+    var ny = u1[2]*u2[0] - u1[0]*u2[2];
+    var nz = u1[0]*u2[1] - u1[1]*u2[0];
+    var len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    glNormal3f(nx, ny, nz);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(v0[0], v0[1], v0[2]);
+    glVertex3f(v1[0], v1[1], v1[2]);
+    glVertex3f(top[0], top[1], top[2]);
+    glEnd();
+    
+    // Ściana prawa (v1, v2, top)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, pyramidMaterials[1].ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, pyramidMaterials[1].diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, pyramidMaterials[1].specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, pyramidMaterials[1].shininess);
+    u1 = [v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]];
+    u2 = [top[0]-v1[0], top[1]-v1[1], top[2]-v1[2]];
+    nx = u1[1]*u2[2] - u1[2]*u2[1];
+    ny = u1[2]*u2[0] - u1[0]*u2[2];
+    nz = u1[0]*u2[1] - u1[1]*u2[0];
+    len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    glNormal3f(nx, ny, nz);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(v1[0], v1[1], v1[2]);
+    glVertex3f(v2[0], v2[1], v2[2]);
+    glVertex3f(top[0], top[1], top[2]);
+    glEnd();
+    
+    // Ściana tylna (v2, v3, top)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, pyramidMaterials[2].ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, pyramidMaterials[2].diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, pyramidMaterials[2].specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, pyramidMaterials[2].shininess);
+    u1 = [v3[0]-v2[0], v3[1]-v2[1], v3[2]-v2[2]];
+    u2 = [top[0]-v2[0], top[1]-v2[1], top[2]-v2[2]];
+    nx = u1[1]*u2[2] - u1[2]*u2[1];
+    ny = u1[2]*u2[0] - u1[0]*u2[2];
+    nz = u1[0]*u2[1] - u1[1]*u2[0];
+    len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    glNormal3f(nx, ny, nz);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(v2[0], v2[1], v2[2]);
+    glVertex3f(v3[0], v3[1], v3[2]);
+    glVertex3f(top[0], top[1], top[2]);
+    glEnd();
+    
+    // Ściana lewa (v3, v0, top)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, pyramidMaterials[3].ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, pyramidMaterials[3].diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, pyramidMaterials[3].specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, pyramidMaterials[3].shininess);
+    u1 = [v0[0]-v3[0], v0[1]-v3[1], v0[2]-v3[2]];
+    u2 = [top[0]-v3[0], top[1]-v3[1], top[2]-v3[2]];
+    nx = u1[1]*u2[2] - u1[2]*u2[1];
+    ny = u1[2]*u2[0] - u1[0]*u2[2];
+    nz = u1[0]*u2[1] - u1[1]*u2[0];
+    len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    if (len > 0) { nx /= len; ny /= len; nz /= len; }
+    glNormal3f(nx, ny, nz);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(v3[0], v3[1], v3[2]);
+    glVertex3f(v0[0], v0[1], v0[2]);
+    glVertex3f(top[0], top[1], top[2]);
+    glEnd();
+}
+
+// Rysuje podstawę (prostopadłościan) z materiałem metalicznym
+function drawBase() {
+    // Podstawa: prostopadłościan o rozmiarach 8 (szerokość) x 1 (wysokość) x 8 (głębokość)
+    // Środek podstawy w y = -3.5 (piramida zaczyna się na y = -2.5, więc podstawa jest pod piramidą)
+    var width = 8.0;
+    var height = 1.0;
+    var depth = 8.0;
+    var yCenter = -4.0;
+    
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, baseMaterial.ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, baseMaterial.diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, baseMaterial.specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, baseMaterial.shininess);
+    
+    var halfW = width / 2;
+    var halfD = depth / 2;
+    var halfH = height / 2;
+    
+    // Wierzchołki prostopadłościanu
+    var v = [
+        [-halfW, yCenter - halfH, -halfD], // 0: przedni lewy dolny
+        [ halfW, yCenter - halfH, -halfD], // 1: przedni prawy dolny
+        [ halfW, yCenter - halfH,  halfD], // 2: tylny prawy dolny
+        [-halfW, yCenter - halfH,  halfD], // 3: tylny lewy dolny
+        [-halfW, yCenter + halfH, -halfD], // 4: przedni lewy górny
+        [ halfW, yCenter + halfH, -halfD], // 5: przedni prawy górny
+        [ halfW, yCenter + halfH,  halfD], // 6: tylny prawy górny
+        [-halfW, yCenter + halfH,  halfD]  // 7: tylny lewy górny
+    ];
+    
+    // Normalne dla ścian
+    // Ściana przednia (z = -halfD)
+    glNormal3f(0, 0, -1);
+    glBegin(GL_QUADS);
+    glVertex3f(v[0][0], v[0][1], v[0][2]);
+    glVertex3f(v[1][0], v[1][1], v[1][2]);
+    glVertex3f(v[5][0], v[5][1], v[5][2]);
+    glVertex3f(v[4][0], v[4][1], v[4][2]);
+    glEnd();
+    
+    // Ściana tylna (z = halfD)
+    glNormal3f(0, 0, 1);
+    glBegin(GL_QUADS);
+    glVertex3f(v[2][0], v[2][1], v[2][2]);
+    glVertex3f(v[3][0], v[3][1], v[3][2]);
+    glVertex3f(v[7][0], v[7][1], v[7][2]);
+    glVertex3f(v[6][0], v[6][1], v[6][2]);
+    glEnd();
+    
+    // Ściana lewa (x = -halfW)
+    glNormal3f(-1, 0, 0);
+    glBegin(GL_QUADS);
+    glVertex3f(v[3][0], v[3][1], v[3][2]);
+    glVertex3f(v[0][0], v[0][1], v[0][2]);
+    glVertex3f(v[4][0], v[4][1], v[4][2]);
+    glVertex3f(v[7][0], v[7][1], v[7][2]);
+    glEnd();
+    
+    // Ściana prawa (x = halfW)
+    glNormal3f(1, 0, 0);
+    glBegin(GL_QUADS);
+    glVertex3f(v[1][0], v[1][1], v[1][2]);
+    glVertex3f(v[2][0], v[2][1], v[2][2]);
+    glVertex3f(v[6][0], v[6][1], v[6][2]);
+    glVertex3f(v[5][0], v[5][1], v[5][2]);
+    glEnd();
+    
+    // Ściana górna (y = yCenter + halfH)
+    glNormal3f(0, 1, 0);
+    glBegin(GL_QUADS);
+    glVertex3f(v[4][0], v[4][1], v[4][2]);
+    glVertex3f(v[5][0], v[5][1], v[5][2]);
+    glVertex3f(v[6][0], v[6][1], v[6][2]);
+    glVertex3f(v[7][0], v[7][1], v[7][2]);
+    glEnd();
+    
+    // Ściana dolna (y = yCenter - halfH)
+    glNormal3f(0, -1, 0);
+    glBegin(GL_QUADS);
+    glVertex3f(v[0][0], v[0][1], v[0][2]);
+    glVertex3f(v[3][0], v[3][1], v[3][2]);
+    glVertex3f(v[2][0], v[2][1], v[2][2]);
+    glVertex3f(v[1][0], v[1][1], v[1][2]);
+    glEnd();
+}
+
+// Ustawienie świateł i rysowanie kuli światła
+function setupLightsAndDrawSphere() {
+    var zeroEmission = [0, 0, 0, 1];
+    var lightPos = [lightDistance * Math.cos(lightAngle), lightHeight, lightDistance * Math.sin(lightAngle), 1];
+    
+    if (pointLight.checked) {
+        glEnable(GL_LIGHT1);
+        glLightfv(GL_LIGHT1, GL_POSITION, lightPos);
+        // Rysuj kulę z materiałem emisyjnym (świecąca)
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, lightSphereMaterial.ambient);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, lightSphereMaterial.diffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, lightSphereMaterial.specular);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, lightSphereMaterial.emission);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, lightSphereMaterial.shininess);
+    } else {
+        glDisable(GL_LIGHT1);
+        // Rysuj kulę z materiałem szarym (wyłączona)
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, lightSphereMaterialOff.ambient);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, lightSphereMaterialOff.diffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, lightSphereMaterialOff.specular);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, lightSphereMaterialOff.emission);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, lightSphereMaterialOff.shininess);
+    }
+    
+    glPushMatrix();
+    glTranslatef(lightPos[0], lightPos[1], lightPos[2]);
+    drawSphere(0.6, 24, 16);
+    glPopMatrix();
+    
+    // Reset emission
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, zeroEmission);
+}
+
+// Główna funkcja rysująca scenę
+function display() {
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    camera.apply();
+    
+    // Konfiguracja globalnego światła otoczenia
+    if (ambientLight.checked) {
+        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.25, 0.25, 0.25, 1]);
+    } else {
+        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0, 0, 0, 1]);
+    }
+    
+    // Konfiguracja światła punktowego (LIGHT1) - właściwości światła
+    if (pointLight.checked) {
+        var lightColor = [1.0, 1.0, 0.8, 1];
+        glLightfv(GL_LIGHT1, GL_AMBIENT, [0.1, 0.1, 0.05, 1]);
+        glLightfv(GL_LIGHT1, GL_DIFFUSE, lightColor);
+        glLightfv(GL_LIGHT1, GL_SPECULAR, [0.8, 0.8, 0.6, 1]);
+    }
+    
+    // Ustawienie materiałów dla piramidy i podstawy (bez kuli)
+    // Kula światła jest rysowana osobno z własnym materiałem
+    
+    // Rotacja podstawy wokół osi Y
+    glPushMatrix();
+    glRotatef(baseRotationY, 0, 1, 0);
+    
+    // Rysuj podstawę
+    drawBase();
+    
+    // Rysuj piramidę (na podstawie)
+    drawPyramid();
+    
+    glPopMatrix();
+    
+    // Rysuj kulę światła (nie podlega rotacji podstawy)
+    setupLightsAndDrawSphere();
+}
+
+// Funkcja animacji - aktualizuje kąt światła
+function doFrame() {
+    if (animating) {
+        frameNumber++;
+        lightAngle += 0.02;  // Obracanie światła wokół piramidy
+        if (lightAngle > 2 * Math.PI) lightAngle -= 2 * Math.PI;
+        display();
+        setTimeout(doFrame, 30);
+    }
+}
+
+// Obsługa myszy do rotacji podstawy (przeciąganie w poziomie)
+function setupMouseRotation() {
+    var canvas = document.getElementById("maincanvas");
+    var dragging = false;
+    var lastX = 0;
+    
+    canvas.addEventListener("mousedown", function(e) {
+        dragging = true;
+        lastX = e.clientX;
+        e.preventDefault();
+    });
+    
+    window.addEventListener("mousemove", function(e) {
+        if (dragging) {
+            var dx = e.clientX - lastX;
+            baseRotationY += dx * 0.5;
+            lastX = e.clientX;
+            display();
+        }
+    });
+    
+    window.addEventListener("mouseup", function(e) {
+        dragging = false;
+    });
+    
+    // Obsługa dotyku dla urządzeń mobilnych
+    canvas.addEventListener("touchstart", function(e) {
+        if (e.touches.length == 1) {
+            dragging = true;
+            lastX = e.touches[0].clientX;
+            e.preventDefault();
+        }
+    });
+    
+    window.addEventListener("touchmove", function(e) {
+        if (dragging && e.touches.length == 1) {
+            var dx = e.touches[0].clientX - lastX;
+            baseRotationY += dx * 0.5;
+            lastX = e.touches[0].clientX;
+            display();
+            e.preventDefault();
+        }
+    });
+    
+    window.addEventListener("touchend", function(e) {
+        dragging = false;
+    });
+}
+
+// Inicjalizacja OpenGL
+function initGL() {
+    glClearColor(0, 0, 0, 1);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_NORMALIZE);
+    glEnable(GL_COLOR_MATERIAL);
+    glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, 1);
+    
+    // Światło LIGHT0 - kierunkowe z pozycji kamery (podświetlenie)
+    glEnable(GL_LIGHT0);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.4, 0.4, 0.4, 1]);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, [0.3, 0.3, 0.3, 1]);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, [0.1, 0.1, 0.1, 1]);
+    
+    // Światło LIGHT1 - punktowe (kula) - będzie skonfigurowane później
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, [1, 1, 0.8, 1]);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, [0.8, 0.8, 0.6, 1]);
+    glLightfv(GL_LIGHT1, GL_AMBIENT, [0.1, 0.1, 0.05, 1]);
+}
+
+// Główna funkcja inicjalizująca stronę
+function init() {
+    try {
+        glsimUse("maincanvas");
+    }
+    catch (e) {
+        document.getElementById("canvas-holder").innerHTML = "<p><b>Sorry, an error occurred:<br>" +
+                e + "</b></p>";
+        return;
+    }
+    
+    // Pobranie referencji do elementów UI
+    animate = document.getElementById("animate");
+    ambientLight = document.getElementById("ambientLight");
+    pointLight = document.getElementById("pointLight");
+    
+    // Ustawienie domyślnych wartości checkboxów
+    animate.checked = true;
+    ambientLight.checked = true;
+    pointLight.checked = true;
+    
+    // Ustawienie callbacków
+    animate.onchange = function() {
+        if (animate.checked) {
+            animating = true;
+            doFrame();
+        } else {
+            animating = false;
+        }
+    };
+    ambientLight.onchange = display;
+    pointLight.onchange = display;
+    
+    // Inicjalizacja OpenGL i kamery
+    initGL();
+    camera = new Camera();
+    camera.lookAt(5, 6, 12, 0, -1, 0, 0, 1, 0);
+    camera.setScale(12);
+    camera.installTrackball(display);
+    
+    // Obsługa rotacji podstawy myszą
+    setupMouseRotation();
+    
+    // Start animacji
+    animating = true;
+    doFrame();
+    
+    display();
+}
+
+</script>
+</head>
+<body onload="init()">
+
+<div id="content">
+
+<h3 id="headline">Piramida z różnymi materiałami - Grafika Komputerowa</h3>
+
+<div id="canvas-holder">
+<canvas id="maincanvas" width="400" height="400"></canvas>
+</div>
+
+<div id="tools">
+<p>
+<label><input type="checkbox" id="animate" checked>Animuj światło (kula)</label><br><br>
+<label><input type="checkbox" id="ambientLight" checked>Globalne światło otoczenia</label><br><br>
+<label><input type="checkbox" id="pointLight" checked>Źródło światła (kula)</label><br><br>
+</p>
+<p><b>Instrukcja:</b><br>
+- Przeciągaj myszą w poziomie, aby obracać podstawę wokół osi Y.<br>
+- Kula światła obraca się wokół piramidy (gdy animacja włączona).<br>
+- Każda ściana piramidy ma inny materiał (czerwony, zielony, niebieski, żółty).<br>
+- Podstawa wykonana z szarego metalu.<br>
+- Możesz wyłączyć/włączyć światło otoczenia i światło punktowe.
+</p>
+</div>
+
+</div>
+
+<div id="help-content" style="display:none">
+<h3>Opis zadania</h3>
+<p>Celem jest stworzenie piramidy z użyciem różnych materiałów na każdej ścianie oraz umieszczenie jej na podstawie.</p>
+<p>Funkcjonalności:</p>
+<ul>
+<li>Piramida - 4 ściany, każda z innym materiałem (czerwony, zielony, niebieski, żółty).</li>
+<li>Podstawa - prostopadłościan z szarego metalu, możliwość obracania wokół osi Y poprzez przeciąganie myszą w poziomie.</li>
+<li>Globalne światło otoczenia (ambient) - można włączać/wyłączać.</li>
+<li>Źródło światła w kształcie kuli - obraca się wokół piramidy, można włączyć animację.</li>
+</ul>
+<p>Sterowanie:</p>
+<ul>
+<li>Przeciąganie myszą w poziomie - obrót podstawy.</li>
+<li>Przeciąganie myszą w pionie lub po skosie - obrót kamery (trackball).</li>
+<li>Checkboxy - włączanie/wyłączanie animacji, światła otoczenia i światła punktowego.</li>
+</ul>
+</div>
+
+<!-- support for help text -->
+<div id="help-icon">
+<img src="../image/question32.png" onclick="showDemoHelp()"
+    title="Kliknij, aby wyświetlić informacje o tym demo." width="32" height="32">
+</div>
+<div id="hide-help-icon">
+<img src="../image/close32.png" onclick="showDemoHelp()"
+    title="Kliknij, aby wrócić do demonstracji." width="65" height="32">
+</div>
+<div id="helpBG" style="display:none"></div>
+</body>
+</html>
