@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wieża Hanoi - Interaktywna gra 3D (Three.js)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Poppins', sans-serif;
+        }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            z-index: 100;
+            pointer-events: none;
+            flex-wrap: wrap;
+        }
+        .panel {
+            background: rgba(20, 25, 45, 0.9);
+            backdrop-filter: blur(12px);
+            border-radius: 50px;
+            padding: 10px 24px;
+            display: flex;
+            gap: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,215,0,0.4);
+            pointer-events: auto;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            background: linear-gradient(135deg, #ffaa33, #ff8800);
+            border: none;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            letter-spacing: 1px;
+        }
+        button:hover {
+            transform: scale(1.02);
+            background: linear-gradient(135deg, #ffcc55, #ffaa22);
+        }
+        .btn-hint {
+            background: linear-gradient(135deg, #44aaff, #2288cc);
+        }
+        .btn-solve {
+            background: linear-gradient(135deg, #55cc55, #33aa33);
+        }
+        .status {
+            background: #1a1f2e;
+            padding: 6px 18px;
+            border-radius: 40px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: #ffdd99;
+            border-left: 3px solid #ffaa33;
+        }
+        .victory {
+            background: #2a6b3c;
+            color: #d4ffaa;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.8; text-shadow: 0 0 0px gold; }
+            100% { opacity: 1; text-shadow: 0 0 4px #ffcc44; }
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.65);
+            padding: 8px 18px;
+            border-radius: 30px;
+            color: #ddd;
+            font-size: 0.8rem;
+            pointer-events: none;
+            font-family: monospace;
+            backdrop-filter: blur(4px);
+            z-index: 100;
+        }
+        @media (max-width: 750px) {
+            .panel { padding: 8px 16px; gap: 10px; }
+            button { padding: 5px 12px; font-size: 0.7rem; }
+            .status { font-size: 0.7rem; padding: 4px 12px; }
+            .info { font-size: 0.65rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <strong>Wieża Hanoi (4 krążki)</strong> | Kliknij krążek → kliknij słupek<br>
+        <span style="color:#88ffaa;">Mniejszy na większym</span> | Cel: wszystkie na prawym słupku (C)
+    </div>
+    <div id="ui">
+        <div class="panel">
+            <div class="status" id="gameStatus">Gra aktywna</div>
+            <button id="resetBtn">Resetuj</button>
+            <button id="hintBtn" class="btn-hint">Podpowiedź</button>
+            <button id="solveBtn" class="btn-solve">Rozwiąż automatycznie</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- Inicjalizacja sceny ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a1030);
+        scene.fog = new THREE.FogExp2(0x0a1030, 0.006);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(7, 6, 12);
+        camera.lookAt(0, 2.5, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 2.2, 0);
+        controls.zoomSpeed = 1.2;
+
+        // --- Oświetlenie ---
+        const ambient = new THREE.AmbientLight(0x404060, 0.65);
+        scene.add(ambient);
+        const mainLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
+        mainLight.position.set(5, 12, 4);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        scene.add(mainLight);
+        const fillLight = new THREE.PointLight(0x5577aa, 0.4);
+        fillLight.position.set(-2, 3, 4);
+        scene.add(fillLight);
+        const backLight = new THREE.PointLight(0xffaa66, 0.35);
+        backLight.position.set(1, 3, -5);
+        scene.add(backLight);
+        
+        const gridHelper = new THREE.GridHelper(15, 20, 0x88aaff, 0x335588);
+        gridHelper.position.y = -0.25;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.35;
+        scene.add(gridHelper);
+
+        // --- Konfiguracja gry ---
+        const PEG_COUNT = 3;
+        const DISK_COUNT = 4;
+        const PEG_POSITIONS = [-3.5, 0, 3.5];
+        const DISK_HEIGHT = 0.28;
+        const BASE_RADIUS = 0.55;
+        const RADIUS_STEP = 0.3;
+        const COLORS = [0xffaa55, 0x66ccff, 0x88ffaa, 0xff8888, 0xdd99ff];
+        
+        let rods = [[], [], []];
+        let diskItems = [];
+        let selectedDiskSize = null;
+        let selectedRodIdx = null;
+        let selectedMesh = null;
+        
+        // Automatyczne rozwiązywanie
+        let autoSolveActive = false;
+        let solveMovesQueue = [];
+        let isAnimatingMove = false;
+        let animFrameId = null;
+        
+        // --- Funkcje geometryczne ---
+        function getDiskRadius(size) {
+            return BASE_RADIUS + (size - 1) * RADIUS_STEP;
+        }
+        
+        function createDiskMesh(size, rodX, yPos) {
+            const radius = getDiskRadius(size);
+            const geometry = new THREE.CylinderGeometry(radius, radius, DISK_HEIGHT, 48, 24);
+            const material = new THREE.MeshStandardMaterial({
+                color: COLORS[(size-1) % COLORS.length],
+                metalness: 0.7,
+                roughness: 0.35,
+                emissive: 0x331c00,
+                emissiveIntensity: 0.08
+            });
+            const cylinder = new THREE.Mesh(geometry, material);
+            cylinder.castShadow = true;
+            cylinder.receiveShadow = false;
+            cylinder.userData = { type: 'disk', size: size, rodIndex: null };
+            cylinder.position.set(rodX, yPos, 0);
+            return cylinder;
+        }
+        
+        function rebuildAllDisks() {
+            diskItems.forEach(item => {
+                scene.remove(item.mesh);
+                if (item.mesh.geometry) item.mesh.geometry.dispose();
+                if (item.mesh.material) item.mesh.material.dispose();
+            });
+            diskItems = [];
+            for (let r = 0; r < PEG_COUNT; r++) {
+                const stack = rods[r];
+                const baseY = 0.12;
+                for (let level = 0; level < stack.length; level++) {
+                    const size = stack[level];
+                    const yPos = baseY + level * DISK_HEIGHT;
+                    const mesh = createDiskMesh(size, PEG_POSITIONS[r], yPos);
+                    mesh.userData.rodIndex = r;
+                    mesh.userData.size = size;
+                    scene.add(mesh);
+                    diskItems.push({ mesh, size, rodIdx: r, yPos });
+                }
+            }
+            clearSelected();
+        }
+        
+        function isValidMove(fromRod, toRod, diskSize) {
+            if (fromRod === toRod) return false;
+            const targetStack = rods[toRod];
+            if (targetStack.length === 0) return true;
+            const topDisk = targetStack[targetStack.length - 1];
+            return diskSize < topDisk;
+        }
+        
+        function executeMove(fromRod, toRod, diskSize, silent = false) {
+            if (!isValidMove(fromRod, toRod, diskSize)) {
+                if (!silent) showInvalidMoveFeedback();
+                return false;
+            }
+            if (rods[fromRod].length === 0) return false;
+            const top = rods[fromRod][rods[fromRod].length - 1];
+            if (top !== diskSize) return false;
+            rods[fromRod].pop();
+            rods[toRod].push(diskSize);
+            rebuildAllDisks();
+            checkVictoryCondition();
+            return true;
+        }
+        
+        function showInvalidMoveFeedback() {
+            const statusDiv = document.getElementById('gameStatus');
+            statusDiv.style.backgroundColor = "#8b3a3a";
+            statusDiv.innerHTML = "❌ NIEDOZWOLONY RUCH! Nie można kłaść większego na mniejszy";
+            setTimeout(() => {
+                if (!checkIfGameWon() && !autoSolveActive) {
+                    statusDiv.style.backgroundColor = "#1a1f2e";
+                    statusDiv.innerHTML = "Gra aktywna";
+                }
+            }, 1200);
+        }
+        
+        function checkVictoryCondition() {
+            if (rods[2].length === DISK_COUNT) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "WYGRANAA!!!";
+                statusDiv.classList.add('victory');
+                statusDiv.style.backgroundColor = "#2a6b3c";
+                if (autoSolveActive) stopAutoSolve();
+                return true;
+            }
+            return false;
+        }
+        
+        function checkIfGameWon() {
+            return rods[2].length === DISK_COUNT;
+        }
+        
+        function resetGame() {
+            if (autoSolveActive) stopAutoSolve();
+            rods = [[], [], []];
+            for (let i = DISK_COUNT; i >= 1; i--) rods[0].push(i);
+            rebuildAllDisks();
+            const statusDiv = document.getElementById('gameStatus');
+            statusDiv.innerHTML = "🎮 Gra aktywna";
+            statusDiv.classList.remove('victory');
+            statusDiv.style.backgroundColor = "#1a1f2e";
+            clearSelected();
+        }
+        
+        function clearSelected() {
+            if (selectedMesh && selectedMesh.material) {
+                selectedMesh.material.emissiveIntensity = 0.08;
+                selectedMesh.material.emissive.setHex(0x000000);
+            }
+            selectedMesh = null;
+            selectedDiskSize = null;
+            selectedRodIdx = null;
+        }
+        
+        function highlightDisk(mesh) {
+            if (selectedMesh === mesh) return;
+            clearSelected();
+            selectedMesh = mesh;
+            if (mesh && mesh.material) {
+                mesh.material.emissiveIntensity = 0.65;
+                mesh.material.emissive.setHex(0xffaa55);
+            }
+        }
+        
+        // --- Generowanie optymalnych ruchów (Hanoi) ---
+        function generateHanoiMoves(n, from, to, via, movesArray) {
+            if (n === 1) {
+                movesArray.push({ from, to });
+            } else {
+                generateHanoiMoves(n-1, from, via, to, movesArray);
+                movesArray.push({ from, to });
+                generateHanoiMoves(n-1, via, to, from, movesArray);
+            }
+        }
+        
+        // --- Podpowiedź: znajduje następny ruch w optymalnym rozwiązaniu od obecnego stanu ---
+        function getHintMove() {
+            if (checkIfGameWon()) return null;
+            // Generujemy pełne rozwiązanie od stanu początkowego i symulujemy aż do osiągnięcia obecnego stanu
+            const fullMoves = [];
+            generateHanoiMoves(DISK_COUNT, 0, 2, 1, fullMoves);
+            
+            let simRods = [[], [], []];
+            for (let i = DISK_COUNT; i >= 1; i--) simRods[0].push(i);
+            
+            for (let i = 0; i < fullMoves.length; i++) {
+                const move = fullMoves[i];
+                const from = move.from, to = move.to;
+                if (simRods[from].length === 0) continue;
+                const disk = simRods[from][simRods[from].length - 1];
+                if (simRods[to].length === 0 || simRods[to][simRods[to].length - 1] > disk) {
+                    // wykonaj symulacyjny ruch
+                    simRods[to].push(simRods[from].pop());
+                    // porównaj z aktualnym stanem
+                    let match = true;
+                    for (let j = 0; j < PEG_COUNT; j++) {
+                        if (simRods[j].length !== rods[j].length) { match = false; break; }
+                        for (let k = 0; k < simRods[j].length; k++) {
+                            if (simRods[j][k] !== rods[j][k]) { match = false; break; }
+                        }
+                        if (!match) break;
+                    }
+                    if (match && i + 1 < fullMoves.length) {
+                        return fullMoves[i + 1];
+                    } else if (match && i + 1 === fullMoves.length) {
+                        return null;
+                    }
+                } else {
+                    break;
+                }
+            }
+            // Fallback: pierwszy możliwy ruch zgodny z regułami
+            for (let from = 0; from < 3; from++) {
+                if (rods[from].length === 0) continue;
+                const disk = rods[from][rods[from].length - 1];
+                for (let to = 0; to < 3; to++) {
+                    if (isValidMove(from, to, disk)) {
+                        return { from, to };
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function showHint() {
+            if (autoSolveActive) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "Najpierw zatrzymaj auto-rozwiązywanie (Reset)";
+                return;
+            }
+            if (checkIfGameWon()) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "Gra już rozwiązana! Resetuj.";
+                return;
+            }
+            const hint = getHintMove();
+            if (!hint) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "Brak podpowiedzi";
+                return;
+            }
+            const { from, to } = hint;
+            const diskSize = rods[from][rods[from].length - 1];
+            const diskMeshObj = diskItems.find(d => d.rodIdx === from && d.size === diskSize);
+            if (diskMeshObj) {
+                const originalIntensity = diskMeshObj.mesh.material.emissiveIntensity;
+                diskMeshObj.mesh.material.emissiveIntensity = 0.9;
+                diskMeshObj.mesh.material.emissive.setHex(0xffaa66);
+                setTimeout(() => {
+                    if (diskMeshObj.mesh && diskMeshObj.mesh.material) {
+                        diskMeshObj.mesh.material.emissiveIntensity = originalIntensity;
+                    }
+                }, 800);
+                const pegNames = ["lewy (A)", "środkowy (B)", "prawy (C)"];
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = `Podpowiedź: przesuń krążek z ${pegNames[from]} na ${pegNames[to]}`;
+                setTimeout(() => {
+                    if (!autoSolveActive && !checkIfGameWon()) statusDiv.innerHTML = "🎮 Gra aktywna";
+                }, 2500);
+            }
+        }
+        
+        // --- Animacja pojedynczego ruchu (płynne przesunięcie) ---
+        function animateSingleMove(from, to, diskSize, onComplete) {
+            if (isAnimatingMove) return;
+            const diskEntry = diskItems.find(d => d.rodIdx === from && d.size === diskSize);
+            if (!diskEntry) { if (onComplete) onComplete(); return; }
+            const mesh = diskEntry.mesh;
+            const startPos = mesh.position.clone();
+            const targetX = PEG_POSITIONS[to];
+            const newY = 0.12 + rods[to].length * DISK_HEIGHT;
+            const endPos = new THREE.Vector3(targetX, newY, 0);
+            const midPos = new THREE.Vector3((startPos.x + targetX) / 2, 3.8, 0);
+            
+            isAnimatingMove = true;
+            let startTime = performance.now();
+            const duration = 350;
+            
+            function step(now) {
+                const elapsed = now - startTime;
+                let t = Math.min(1, elapsed / duration);
+                // ease in-out
+                const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                let currentPos;
+                if (t < 0.5) {
+                    const t2 = t * 2;
+                    currentPos = startPos.clone().lerp(midPos, t2);
+                } else {
+                    const t2 = (t - 0.5) * 2;
+                    currentPos = midPos.clone().lerp(endPos, t2);
+                }
+                mesh.position.copy(currentPos);
+                if (t >= 1) {
+                    mesh.position.copy(endPos);
+                    isAnimatingMove = false;
+                    if (onComplete) onComplete();
+                } else {
+                    requestAnimationFrame(step);
+                }
+            }
+            requestAnimationFrame(step);
+        }
+        
+        // --- Automatyczne rozwiązywanie ---
+        function startAutoSolve() {
+            if (autoSolveActive) return;
+            if (checkIfGameWon()) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "Już rozwiązane! Resetuj.";
+                return;
+            }
+            // Zatwierdź reset do początkowego stanu dla przejrzystości
+            if (!confirm("Auto-rozwiązanie zresetuje planszę do stanu początkowego i pokaże całe rozwiązanie. Kontynuować?")) {
+                return;
+            }
+            resetGame();
+            autoSolveActive = true;
+            const statusDiv = document.getElementById('gameStatus');
+            statusDiv.innerHTML = "🤖 Automatyczne rozwiązywanie...";
+            solveMovesQueue = [];
+            generateHanoiMoves(DISK_COUNT, 0, 2, 1, solveMovesQueue);
+            processNextMove();
+        }
+        
+        function processNextMove() {
+            if (!autoSolveActive) return;
+            if (solveMovesQueue.length === 0) {
+                autoSolveActive = false;
+                checkVictoryCondition();
+                const statusDiv = document.getElementById('gameStatus');
+                if (rods[2].length === DISK_COUNT) {
+                    statusDiv.innerHTML = "WYGRANA!!!!";
+                } else {
+                    statusDiv.innerHTML = "Gra aktywna";
+                }
+                return;
+            }
+            const move = solveMovesQueue.shift();
+            const { from, to } = move;
+            if (rods[from].length === 0) {
+                processNextMove();
+                return;
+            }
+            const diskSize = rods[from][rods[from].length - 1];
+            if (!isValidMove(from, to, diskSize)) {
+                console.error("Błąd w sekwencji rozwiązania");
+                autoSolveActive = false;
+                return;
+            }
+            // Animacja ruchu
+            animateSingleMove(from, to, diskSize, () => {
+                // Po animacji wykonaj faktyczny ruch na danych
+                const success = executeMove(from, to, diskSize, true);
+                if (success) {
+                    setTimeout(() => processNextMove(), 200);
+                } else {
+                    autoSolveActive = false;
+                }
+            });
+        }
+        
+        function stopAutoSolve() {
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            autoSolveActive = false;
+            isAnimatingMove = false;
+            solveMovesQueue = [];
+        }
+        
+        // --- Interakcja myszą (ręczne układanie) ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let pegColliders = [];
+        
+        function rebuildPegColliders() {
+            pegColliders.forEach(c => scene.remove(c));
+            pegColliders = [];
+            for (let i = 0; i < PEG_COUNT; i++) {
+                // Użyj większego collidera dla łatwiejszego klikania
+                const colliderGeo = new THREE.CylinderGeometry(0.7, 0.7, 3.5, 8);
+                const colliderMat = new THREE.MeshBasicMaterial({ visible: false });
+                const collider = new THREE.Mesh(colliderGeo, colliderMat);
+                collider.position.set(PEG_POSITIONS[i], 1.8, 0);
+                collider.userData = { pegIndex: i, type: 'peg' };
+                scene.add(collider);
+                pegColliders.push(collider);
+            }
+        }
+        
+        function onMouseClick(event) {
+            if (autoSolveActive) {
+                const statusDiv = document.getElementById('gameStatus');
+                statusDiv.innerHTML = "⏳ Najpierw naciśnij Reset, aby przerwać auto-rozwiązywanie";
+                return;
+            }
+            if (checkIfGameWon()) return;
+            
+            mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
+            mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            
+            const diskMeshes = diskItems.map(d => d.mesh);
+            const intersectsDisks = raycaster.intersectObjects(diskMeshes);
+            const intersectsPegs = raycaster.intersectObjects(pegColliders);
+            
+            // Przypadek 1: mamy wybrany krążek i klikamy w słupek
+            if (selectedDiskSize !== null && selectedRodIdx !== null && intersectsPegs.length > 0) {
+                const hitPeg = intersectsPegs[0].object.userData.pegIndex;
+                executeMove(selectedRodIdx, hitPeg, selectedDiskSize);
+                clearSelected();
+            }
+            // Przypadek 2: kliknięcie w krążek (zaznaczenie)
+            else if (intersectsDisks.length > 0) {
+                const hitDisk = intersectsDisks[0].object;
+                const diskSize = hitDisk.userData.size;
+                const rodIdx = hitDisk.userData.rodIndex;
+                // Sprawdź czy to krążek na samej górze
+                if (rods[rodIdx].length > 0 && rods[rodIdx][rods[rodIdx].length - 1] === diskSize) {
+                    highlightDisk(hitDisk);
+                    selectedDiskSize = diskSize;
+                    selectedRodIdx = rodIdx;
+                } else {
+                    showInvalidMoveFeedback();
+                    clearSelected();
+                }
+            }
+            else {
+                clearSelected();
+            }
+        }
+        
+        // --- Obiekty 3D---
+        function createBasePlatform() {
+            const group = new THREE.Group();
+            const shape = new THREE.Shape();
+            const radius = 5.2;
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                if (i === 0) shape.moveTo(x, z);
+                else shape.lineTo(x, z);
+            }
+            shape.closePath();
+            const extrudeGeo = new THREE.ExtrudeGeometry(shape, { steps: 1, depth: 0.22, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.04 });
+            extrudeGeo.computeVertexNormals();
+            const plate = new THREE.Mesh(extrudeGeo, new THREE.MeshStandardMaterial({ color: 0xaa7a4a, roughness: 0.6, metalness: 0.25 }));
+            plate.rotation.x = -Math.PI/2;
+            plate.position.y = -0.2;
+            plate.receiveShadow = true;
+            group.add(plate);
+            return group;
+        }
+        
+        function createPeg(x, labelText) {
+            const group = new THREE.Group();
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0xccaa88, metalness: 0.65, roughness: 0.3 });
+            const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.32, 3.4, 12), pillarMat);
+            pillar.position.y = 1.7;
+            pillar.castShadow = true;
+            group.add(pillar);
+            const topMat = new THREE.MeshStandardMaterial({ color: 0xffcc77, metalness: 0.85 });
+            const topCap = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), topMat);
+            topCap.position.y = 3.45;
+            group.add(topCap);
+            const div = document.createElement('div');
+            div.textContent = labelText;
+            div.style.cssText = 'background:rgba(0,0,0,0.7);color:#ffdd99;font-size:15px;font-weight:bold;padding:4px 12px;border-radius:30px;border:1px solid #ffaa55;font-family:monospace;white-space:nowrap;';
+            const label = new CSS2DObject(div);
+            label.position.set(0, 3.9, 0);
+            group.add(label);
+            group.position.set(x, 0, 0);
+            return group;
+        }
+        
+        function initWorld() {
+            scene.add(createBasePlatform());
+            const pegLabels = ['Słupek A (start)', 'Słupek B (pomoc.)', 'Słupek C (cel)'];
+            for (let i = 0; i < PEG_COUNT; i++) scene.add(createPeg(PEG_POSITIONS[i], pegLabels[i]));
+            resetGame();
+            rebuildPegColliders();
+            // Gwiazdki
+            const stars = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0x88aaff, size: 0.07 }));
+            const positions = [];
+            for (let i = 0; i < 700; i++) {
+                positions.push((Math.random() - 0.5) * 180);
+                positions.push((Math.random() - 0.5) * 40 + 5);
+                positions.push((Math.random() - 0.5) * 80 - 40);
+            }
+            stars.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+            scene.add(stars);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        document.getElementById('resetBtn').addEventListener('click', () => { stopAutoSolve(); resetGame(); });
+        document.getElementById('hintBtn').addEventListener('click', () => showHint());
+        document.getElementById('solveBtn').addEventListener('click', () => startAutoSolve());
+        
+        initWorld();
+        window.addEventListener('click', onMouseClick);
+        animate();
+        
+        console.log("Wieża Hanoi 4 krążki - gotowa! Kliknij krążek, potem słupek.");
+    </script>
+</body>
+</html>
