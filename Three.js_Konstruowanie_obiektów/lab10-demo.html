@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Klasyczna Biała Wieża Szachowa - Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Georgia', serif;
+        }
+        
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ddd;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+            z-index: 10;
+            font-family: monospace;
+            border-left: 3px solid #ccc;
+        }
+        
+        #controls-note {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            color: #aaa;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        
+        @media (max-width: 600px) {
+            #info { font-size: 10px; bottom: 10px; left: 10px; }
+            #controls-note { font-size: 9px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        ♜ BIAŁA WIEŻA | Gładki trzon | Korona jako CZYSTY PIERŚCIEŃ (bez kwadratów)
+    </div>
+    <div id="controls-note">
+        🖱️ Mysz: obrót | PPM: przesuwanie | Scroll: zoom
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        
+        // --- Scena z CIEMNYM TŁEM ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        scene.fog = new THREE.FogExp2(0x0a0a1a, 0.012);
+        
+        // --- Kamera ---
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(3.5, 2.8, 4.2);
+        camera.lookAt(0, 1.3, 0);
+        
+        // --- Renderer ---
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+        
+        // --- Kontrolki ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.rotateSpeed = 1.2;
+        controls.zoomSpeed = 1.2;
+        controls.panSpeed = 0.9;
+        controls.target.set(0, 1.4, 0);
+        
+        // --- OŚWIETLENIE ---
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.3);
+        mainLight.position.set(5, 8, 4);
+        mainLight.castShadow = true;
+        mainLight.receiveShadow = false;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        mainLight.shadow.camera.near = 0.5;
+        mainLight.shadow.camera.far = 10;
+        mainLight.shadow.camera.left = -5;
+        mainLight.shadow.camera.right = 5;
+        mainLight.shadow.camera.top = 5;
+        mainLight.shadow.camera.bottom = -5;
+        scene.add(mainLight);
+        
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.65);
+        scene.add(ambientLight);
+        
+        const backLight = new THREE.PointLight(0x6688aa, 0.5);
+        backLight.position.set(-2, 2.5, -3);
+        scene.add(backLight);
+        
+        const fillLight = new THREE.PointLight(0xaa8866, 0.45);
+        fillLight.position.set(3, 2, 3);
+        scene.add(fillLight);
+        
+        const rimLight = new THREE.PointLight(0x88aacc, 0.3);
+        rimLight.position.set(0, -1, 1);
+        scene.add(rimLight);
+        
+        // --- Podstawa pod figurę ---
+        const shadowCatcher = new THREE.Mesh(
+            new THREE.CircleGeometry(1.6, 24),
+            new THREE.ShadowMaterial({ opacity: 0.5, color: 0x000000, transparent: true, side: THREE.DoubleSide, blur: 0.6 })
+        );
+        shadowCatcher.rotation.x = -Math.PI / 2;
+        shadowCatcher.position.y = -0.85;
+        shadowCatcher.receiveShadow = true;
+        scene.add(shadowCatcher);
+        
+        const gridHelper = new THREE.GridHelper(6, 16, 0x335588, 0x224466);
+        gridHelper.position.y = -0.88;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.2;
+        scene.add(gridHelper);
+        
+        // ========== BUDOWA KLASYCZNEJ BIAŁEJ WIEŻY ==========
+        const towerGroup = new THREE.Group();
+        
+        const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xf0f0f0,
+            roughness: 0.45,
+            metalness: 0.05,
+            emissive: 0x111111,
+            emissiveIntensity: 0.01
+        });
+        
+        const lightMat = new THREE.MeshStandardMaterial({
+            color: 0xe8e8e8,
+            roughness: 0.5,
+            metalness: 0.02
+        });
+        
+        // 1. PODSTAWA (szeroki cylinder)
+        const base = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.45, 1.6, 0.28, 32),
+            whiteMat
+        );
+        base.castShadow = true;
+        base.receiveShadow = true;
+        base.position.y = -0.72;
+        towerGroup.add(base);
+        
+        // Dolny pierścień ozdobny
+        const baseRing = new THREE.Mesh(
+            new THREE.TorusGeometry(1.52, 0.06, 24, 80),
+            lightMat
+        );
+        baseRing.rotation.x = Math.PI / 2;
+        baseRing.position.y = -0.58;
+        baseRing.castShadow = true;
+        towerGroup.add(baseRing);
+        
+        // 2. TRZON (gładki cylinder, lekko zwężający się ku górze)
+        const shaft = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.05, 1.32, 1.85, 32),
+            whiteMat
+        );
+        shaft.castShadow = true;
+        shaft.receiveShadow = true;
+        shaft.position.y = 0.28;
+        towerGroup.add(shaft);
+        
+        // 3. GÓRNA PLATFORMA (podstawa pod koronę)
+        const upperPlatform = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.28, 1.2, 0.14, 32),
+            whiteMat
+        );
+        upperPlatform.castShadow = true;
+        upperPlatform.position.y = 1.42;
+        towerGroup.add(upperPlatform);
+        
+        // Pierścień pod platformą
+        const underRing = new THREE.Mesh(
+            new THREE.TorusGeometry(1.24, 0.055, 24, 80),
+            lightMat
+        );
+        underRing.rotation.x = Math.PI / 2;
+        underRing.position.y = 1.36;
+        underRing.castShadow = true;
+        towerGroup.add(underRing);
+      
+        // 4. KORONA
+        const crownRing = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.35, 1.35, 0.55, 48),
+            whiteMat
+        );
+        crownRing.castShadow = true;
+        crownRing.position.y = 1.75;
+        towerGroup.add(crownRing);
+        
+        // Górny cienki pierścień wieńczący (dekoracja)
+        const topDecorRing = new THREE.Mesh(
+            new THREE.TorusGeometry(1.38, 0.07, 24, 80),
+            lightMat
+        );
+        topDecorRing.rotation.x = Math.PI / 2;
+        topDecorRing.position.y = 2.02;
+        topDecorRing.castShadow = true;
+        towerGroup.add(topDecorRing);
+        
+        // 5. ZWIEŃCZENIE (płaskie, bez kuli - prosty stożek)
+        const flatTop = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.58, 0.65, 0.1, 24),
+            whiteMat
+        );
+        flatTop.position.y = 2.08;
+        flatTop.castShadow = true;
+        towerGroup.add(flatTop);
+        
+        const tinyCap = new THREE.Mesh(
+            new THREE.ConeGeometry(0.36, 0.12, 16),
+            lightMat
+        );
+        tinyCap.position.y = 2.16;
+        tinyCap.castShadow = true;
+        towerGroup.add(tinyCap);
+        
+        // Dodanie całej figury do sceny
+        scene.add(towerGroup);
+        towerGroup.position.y = 0.02;
+        
+        // --- Subtilne obracające się światło ---
+        const rotatingLight = new THREE.PointLight(0xccaa88, 0.4);
+        rotatingLight.castShadow = false;
+        scene.add(rotatingLight);
+        
+        // --- ANIMACJA ---
+        let time = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.01;
+            
+            const angle = time * 0.4;
+            const radius = 3.2;
+            rotatingLight.position.x = Math.cos(angle) * radius;
+            rotatingLight.position.z = Math.sin(angle) * radius;
+            rotatingLight.position.y = 1.5 + Math.sin(angle * 1.5) * 0.2;
+            rotatingLight.intensity = 0.4 + Math.sin(time * 1.2) * 0.08;
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        
+        window.addEventListener('resize', onWindowResize);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        console.log('Biała wieża - korona jako CZYSTY PIERŚCIEŃ, bez kwadratów na górze');
+    </script>
+</body>
+</html>
