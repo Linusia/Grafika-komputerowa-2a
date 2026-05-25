@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>GLSL - Fala Sinus | Animowana fala kolorów</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Monaco', 'Menlo', monospace;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+            z-index: 10;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            border-left: 3px solid #ff3366;
+        }
+        #controls-note {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            color: #ccc;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            font-family: monospace;
+        }
+        @media (max-width: 600px) {
+            #info { font-size: 10px; bottom: 10px; left: 10px; }
+            #controls-note { font-size: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        FALA SINUS | Czerwony +1 → Żółty -1| Przesuwająca się fala w prawo
+    </div>
+    <div id="controls-note">
+        u_time → animacja | zakres X: 0..1 | Y: 0..1
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const vertexShader = /* glsl */`
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = /* glsl */`
+            precision highp float;
+            
+            varying vec2 vUv;
+            uniform float u_time;
+            
+            void main() {
+                float frequency = 6.28318 * 2.5;
+                float speed = 2.2;
+                
+                float phase = frequency * vUv.x - speed * u_time;
+                float waveValue = sin(phase);
+                
+                float t = (waveValue + 1.0) / 2.0;
+                
+                vec3 colorPeak = vec3(1.0, 0.2, 0.2);
+                vec3 colorTrough = vec3(1.0, 0.9, 0.1);
+                
+                vec3 color = mix(colorTrough, colorPeak, t);
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+        camera.position.z = 1;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+        
+        const uniforms = {
+            u_time: { value: 0.0 }
+        };
+        
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        
+        const material = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: uniforms,
+            transparent: false,
+            depthTest: false,
+            depthWrite: false
+        });
+        
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        
+        function handleResize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const aspect = width / height;
+            
+            camera.left = -aspect;
+            camera.right = aspect;
+            camera.top = 1;
+            camera.bottom = -1;
+            camera.updateProjectionMatrix();
+            
+            renderer.setSize(width, height);
+        }
+        
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            uniforms.u_time.value = clock.getElapsedTime();
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
